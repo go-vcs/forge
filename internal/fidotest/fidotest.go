@@ -59,6 +59,7 @@ type Authenticator struct {
 	LeafNoBasic   bool             // omit basic constraints
 	LeafCritical  bool             // mark the AAGUID extension critical
 	LeafExtValue  []byte           // raw AAGUID extension value override
+	LeafNoExt     bool             // omit the AAGUID extension
 	LeafPublicKey crypto.PublicKey // certify this key instead of the signing one
 
 	caKey   *ecdsa.PrivateKey
@@ -124,7 +125,9 @@ func (a *Authenticator) leaf() {
 		NotAfter:              time.Now().Add(24 * time.Hour * 365),
 		BasicConstraintsValid: !a.LeafNoBasic,
 		IsCA:                  a.LeafCA,
-		ExtraExtensions:       []pkix.Extension{{Id: oidAAGUID, Critical: a.LeafCritical, Value: ext}},
+	}
+	if !a.LeafNoExt {
+		tmpl.ExtraExtensions = []pkix.Extension{{Id: oidAAGUID, Critical: a.LeafCritical, Value: ext}}
 	}
 	a.leafDER = must(x509.CreateCertificate(rand.Reader, tmpl, a.caCert, pub, a.caKey))
 }

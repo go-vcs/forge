@@ -70,7 +70,9 @@ Authentication is a FIDO2 credential on a hardware key with user verification
 which has no PIV applet, so there is no X.509 client-certificate path):
 
 - **Enrolment:** the attestation is verified against FIDO MDS3 with
-  go-authn/fido; only allowlisted AAGUIDs are accepted, with no opt-out.
+  go-authn/fido; only allowlisted AAGUIDs are accepted, with no opt-out, and the
+  attestation leaf must carry the AAGUID extension (stricter than WebAuthn's "if
+  present") equal to the AAGUID in the authenticator data.
 - **Each mutating call** carries a fresh assertion with UV set, over a challenge
   that combines a server nonce, the hash of the exact request message, and a
   TLS exporter value of the connection (RFC 9266-style channel binding). An

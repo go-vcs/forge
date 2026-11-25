@@ -46,9 +46,13 @@ var (
 	ErrAAGUIDNotListed = errors.New("AAGUID is not on the allowlist")
 	ErrUnknownModel    = errors.New("AAGUID unknown to the FIDO metadata service")
 	ErrCertificate     = errors.New("attestation certificate rejected")
-	ErrChain           = errors.New("attestation certificate does not chain to the metadata roots")
-	ErrBadSignature    = errors.New("attestation signature does not verify")
-	ErrAlgorithm       = errors.New("credential key algorithm is not ES256")
+	// The three AAGUID extension rules; each error also wraps ErrCertificate.
+	ErrAAGUIDExtMissing   = errors.New("attestation certificate has no AAGUID extension")
+	ErrAAGUIDExtMalformed = errors.New("AAGUID extension is not an OCTET STRING of 16 bytes")
+	ErrAAGUIDExtMismatch  = errors.New("AAGUID extension differs from the authenticator data")
+	ErrChain              = errors.New("attestation certificate does not chain to the metadata roots")
+	ErrBadSignature       = errors.New("attestation signature does not verify")
+	ErrAlgorithm          = errors.New("credential key algorithm is not ES256")
 )
 
 // Bounds on attestation input.
@@ -263,8 +267,9 @@ func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (
 
 // checkLeaf applies the requirements of WebAuthn 8.2.1 on the attestation
 // certificate: version 3, subject OU "Authenticator Attestation", not a CA, and
-// the AAGUID extension, when present, equal to the AAGUID in the authenticator
-// data.
+// the AAGUID extension equal to the AAGUID in the authenticator data. WebAuthn
+// asks for the extension only "if present"; we require it, because Verify runs
+// only for allowlisted models, which are known to carry it.
 func checkLeaf(c *x509.Certificate, aaguid [16]byte) error {
 	if c.Version != 3 {
 		return fmt.Errorf("%w: version %d", ErrCertificate, c.Version)
@@ -278,22 +283,28 @@ func checkLeaf(c *x509.Certificate, aaguid [16]byte) error {
 	if !c.BasicConstraintsValid {
 		return fmt.Errorf("%w: no basic constraints", ErrCertificate)
 	}
+	// x509.ParseCertificate refuses a certificate with a repeated extension, so
+	// at most one matches.
 	for _, e := range c.Extensions {
 		if !e.Id.Equal(oidAAGUID) {
 			continue
 		}
 		var v []byte
 		if rest, err := asn1.Unmarshal(e.Value, &v); err != nil || len(rest) != 0 {
-			return fmt.Errorf("%w: AAGUID extension is not an OCTET STRING", ErrCertificate)
+			return fmt.Errorf("%w: %w: not an OCTET STRING", ErrCertificate, ErrAAGUIDExtMalformed)
+		}
+		if len(v) != 16 {
+			return fmt.Errorf("%w: %w: %d bytes, want 16", ErrCertificate, ErrAAGUIDExtMalformed, len(v))
 		}
 		if e.Critical {
 			return fmt.Errorf("%w: AAGUID extension is critical", ErrCertificate)
 		}
 		if !bytes.Equal(v, aaguid[:]) {
-			return fmt.Errorf("%w: AAGUID extension differs from the authenticator data", ErrCertificate)
+			return fmt.Errorf("%w: %w: differs from the authenticator data", ErrCertificate, ErrAAGUIDExtMismatch)
 		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("%w: %w", ErrCertificate, ErrAAGUIDExtMissing)
 }
 
 func hasOU(n pkix.Name, want string) bool {

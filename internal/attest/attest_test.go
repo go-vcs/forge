@@ -6,6 +6,7 @@ package attest_test
 
 import (
 	"crypto/sha256"
+	"encoding/asn1"
 	"encoding/base64"
 	"errors"
 	"testing"
@@ -158,7 +159,38 @@ func TestLeafAAGUIDMismatch(t *testing.T) {
 	a.LeafAAGUID = &other
 	a.Reissue()
 	f, ad, st := make1(t, a)
-	wantErr(t, policy(t, a), f, ad, st, attest.ErrCertificate)
+	_, err := policy(t, a).Verify(f, ad, st, cdh)
+	if !errors.Is(err, attest.ErrAAGUIDExtMismatch) || !errors.Is(err, attest.ErrCertificate) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLeafWithoutAAGUIDExtensionIsRefused(t *testing.T) {
+	a := fidotest.New(fidotest.YubiKeyBioAAGUID)
+	a.LeafNoExt = true
+	a.Reissue()
+	f, ad, st := make1(t, a)
+	_, err := policy(t, a).Verify(f, ad, st, cdh)
+	if !errors.Is(err, attest.ErrAAGUIDExtMissing) || !errors.Is(err, attest.ErrCertificate) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLeafAAGUIDExtensionOfTheWrongSizeIsRefused(t *testing.T) {
+	for _, n := range []int{0, 15, 17} {
+		a := fidotest.New(fidotest.YubiKeyBioAAGUID)
+		v, err := asn1.Marshal(make([]byte, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.LeafExtValue = v
+		a.Reissue()
+		f, ad, st := make1(t, a)
+		_, err = policy(t, a).Verify(f, ad, st, cdh)
+		if !errors.Is(err, attest.ErrAAGUIDExtMalformed) || !errors.Is(err, attest.ErrCertificate) {
+			t.Fatalf("%d bytes: got %v", n, err)
+		}
+	}
 }
 
 func TestLeafWrongOU(t *testing.T) {
