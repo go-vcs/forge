@@ -151,13 +151,16 @@ func TestServeRefusals(t *testing.T) {
 		{"no listen", func(a []string) []string { return append(drop(a, "--admin-listen"), "--admin-listen", "") }, "--admin-listen is required"},
 		{"no aaguid", func(a []string) []string { return drop(a, "--aaguid") }, "at least one --aaguid"},
 		{"bad aaguid", func(a []string) []string { return append(drop(a, "--aaguid"), "--aaguid", "not-a-uuid") }, "--aaguid"},
-		{"no key and no credential", func(a []string) []string { return drop(a, "--tls-key") }, "tls.key"},
+		{"no key and no credential", func(a []string) []string { return drop(a, "--tls-key") }, "no systemd credential"},
 		{"extra argument", func(a []string) []string { return append(a, "junk") }, "unknown command"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("CREDENTIALS_DIRECTORY", "")
 			args, _, _ := baseArgs(t, a, 0o600)
-			_, _, err := run(t, t.Context(), tc.mod(args))
+			// Bounded: a refusal that went missing would leave a live server.
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			_, _, err := run(t, ctx, tc.mod(args))
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
 			}
@@ -181,8 +184,8 @@ func TestServeRefusals(t *testing.T) {
 	})
 	t.Run("real loader refuses a missing blob", func(t *testing.T) {
 		old := verifiedRoots
-		if _, err := old(filepath.Join(shortDir(t), "none")); err == nil {
-			t.Fatal("missing blob accepted")
+		if _, err := old(filepath.Join(shortDir(t), "none")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("missing blob: err = %v, want the read error itself", err)
 		}
 		bad := filepath.Join(shortDir(t), "blob")
 		if err := os.WriteFile(bad, []byte("not a jwt"), 0o600); err != nil {
