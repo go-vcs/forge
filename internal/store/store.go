@@ -27,7 +27,15 @@ import (
 )
 
 //go:embed migrations/*.sql
-var migrationFS embed.FS
+var embeddedMigrations embed.FS
+
+// migrationFS and driverName are variables so that a test can make the paths
+// that cannot fail with the real ones (a broken migration set, an unknown
+// driver) fail.
+var (
+	migrationFS fs.FS = embeddedMigrations
+	driverName        = "sqlite"
+)
 
 // Errors the store returns.
 var (
@@ -80,7 +88,7 @@ func migrations() ([]migration, error) {
 		if !ok || err != nil {
 			return nil, fmt.Errorf("store: migration file %q is not NNNN_name.sql", name)
 		}
-		b, err := migrationFS.ReadFile("migrations/" + name)
+		b, err := fs.ReadFile(migrationFS, "migrations/"+name)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +113,7 @@ func Open(ctx context.Context, path string, now func() time.Time) (*Store, error
 	if path == ":memory:" {
 		dsn = "file::memory:?_pragma=foreign_keys(1)&_txlock=immediate"
 	}
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
