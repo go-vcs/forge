@@ -52,6 +52,12 @@ verifies the `packed` attestation: signature, chain to the roots of the MDS3 blo
 leaf AAGUID extension and certificate subject, UP, UV, no backup flags, relying
 party, and the AAGUID allowlist. Self and `none` attestation are refused.
 
+The blob is verified when the server starts, and its `nextUpdate` is checked
+again at every enrolment: once it has passed, enrolment is refused until the
+server is restarted with a current blob, because a revocation published since
+is not in the one it holds. Signed calls and sessions do not depend on the blob
+and keep working.
+
 ## Audit
 
 A signed call leaves two rows in `admin_audit`: an `attempt` row when it is

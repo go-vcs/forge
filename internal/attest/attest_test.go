@@ -263,7 +263,19 @@ func TestAAGUIDText(t *testing.T) {
 	}
 }
 
-func blobFor(a *fidotest.Authenticator, status string) *mds.Blob {
+// blobFor is a verified blob holding a's model; rootsFor serves from it while
+// it is current.
+func blobFor(t *testing.T, a *fidotest.Authenticator, status string) *mds.Blob {
+	t.Helper()
+	return verifiedBlob(t, entryFor(a, status))
+}
+
+func rootsFor(t *testing.T, a *fidotest.Authenticator, status string) attest.MDSRoots {
+	t.Helper()
+	return attest.MDSRoots{Blob: blobFor(t, a, status), Now: at(blobSigned)}
+}
+
+func entryFor(a *fidotest.Authenticator, status string) mds.Entry {
 	e := mds.Entry{
 		AAGUID: attest.FormatAAGUID(a.AAGUID),
 		MetadataStatement: &mds.Statement{
@@ -274,20 +286,20 @@ func blobFor(a *fidotest.Authenticator, status string) *mds.Blob {
 	if status != "" {
 		e.StatusReports = []mds.StatusReport{{Status: "FIDO_CERTIFIED_L1"}, {Status: status}}
 	}
-	return &mds.Blob{Entries: []mds.Entry{e}}
+	return e
 }
 
 func TestMDSRoots(t *testing.T) {
 	a := fidotest.New(fidotest.YubiKeyBioAAGUID)
 	id := attest.FormatAAGUID(a.AAGUID)
 
-	rs, err := attest.MDSRoots{Blob: blobFor(a, "")}.Roots(id)
+	rs, err := rootsFor(t, a, "").Roots(id)
 	if err != nil || len(rs) != 1 || !rs[0].Equal(a.Root()) {
 		t.Fatalf("roots: %v %v", rs, err)
 	}
 	// Through a policy, end to end.
 	f, ad, st := make1(t, a)
-	p, err := attest.NewPolicy(rp, [][16]byte{a.AAGUID}, attest.MDSRoots{Blob: blobFor(a, "")}, nil)
+	p, err := attest.NewPolicy(rp, [][16]byte{a.AAGUID}, rootsFor(t, a, ""), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,19 +307,19 @@ func TestMDSRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := (attest.MDSRoots{Blob: blobFor(a, "")}).Roots("00000000-0000-0000-0000-000000000000"); !errors.Is(err, attest.ErrUnknownModel) {
+	if _, err := rootsFor(t, a, "").Roots("00000000-0000-0000-0000-000000000000"); !errors.Is(err, attest.ErrUnknownModel) {
 		t.Fatalf("unknown: %v", err)
 	}
 	if _, err := (attest.MDSRoots{}).Roots(id); !errors.Is(err, attest.ErrUnknownModel) {
 		t.Fatalf("no blob: %v", err)
 	}
 	for _, s := range []string{"REVOKED", "ATTESTATION_KEY_COMPROMISE", "USER_VERIFICATION_BYPASS", "USER_KEY_REMOTE_COMPROMISE", "USER_KEY_PHYSICAL_COMPROMISE"} {
-		if _, err := (attest.MDSRoots{Blob: blobFor(a, s)}).Roots(id); !errors.Is(err, attest.ErrModelRevoked) {
+		if _, err := rootsFor(t, a, s).Roots(id); !errors.Is(err, attest.ErrModelRevoked) {
 			t.Fatalf("%s: %v", s, err)
 		}
 	}
 	// A status that is not terminal is not a refusal.
-	if _, err := (attest.MDSRoots{Blob: blobFor(a, "UPDATE_AVAILABLE")}).Roots(id); err != nil {
+	if _, err := rootsFor(t, a, "UPDATE_AVAILABLE").Roots(id); err != nil {
 		t.Fatalf("update available: %v", err)
 	}
 }
