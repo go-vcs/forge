@@ -52,7 +52,7 @@ type env struct {
 	clock  *time.Time
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t testing.TB) *env {
 	t.Helper()
 	now := time.Unix(1_800_000_000, 0)
 	clock := &now
@@ -78,7 +78,7 @@ const method = "/govcs.forge.admin.v1.AdminService/CreateUser"
 // call issues a nonce on exporter, has the authenticator sign for
 // (signMethod, signRequest, signExporter), and returns the Input as it would
 // arrive for (method, request) on exporter.
-func (e *env) call(t *testing.T, exporter []byte, signMethod string, signRequest, signExporter []byte) adminauth.Input {
+func (e *env) call(t testing.TB, exporter []byte, signMethod string, signRequest, signExporter []byte) adminauth.Input {
 	t.Helper()
 	nonce, _, err := e.nonces.Issue(exporter)
 	if err != nil {
@@ -95,7 +95,7 @@ func (e *env) call(t *testing.T, exporter []byte, signMethod string, signRequest
 	}
 }
 
-func (e *env) good(t *testing.T) adminauth.Input {
+func (e *env) good(t testing.TB) adminauth.Input {
 	return e.call(t, exporterA, method, []byte("request-bytes"), exporterA)
 }
 
