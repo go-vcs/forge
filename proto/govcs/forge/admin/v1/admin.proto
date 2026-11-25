@@ -1,0 +1,213 @@
+// Copyright (c) the go-vcs authors. All rights reserved.
+//
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+// The admin API of the forge. See docs/design.md, "Administration", and
+// docs/admin-api.md for the exact byte layout the signed calls sign.
+package govcs.forge.admin.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/go-vcs/forge/api/admin/v1;adminv1";
+
+// Envelope is the proof that accompanies every mutating call.
+//
+// The caller first obtains a nonce with GetNonce on the same connection. The
+// authenticator then signs authenticator_data followed by
+//
+//   clientDataHash = SHA-256(encode("go-vcs admin v1", full method name, nonce,
+//                                   SHA-256(request), TLS exporter value))
+//
+// and the server checks it against the enrolled public key. `request` holds the
+// serialized parameters message of the call and is hashed exactly as received.
+message Envelope {
+  bytes nonce = 1;
+  bytes request = 2;
+  bytes credential_id = 3;
+  bytes authenticator_data = 4;
+  bytes signature = 5;
+}
+
+// AdminService is served over TLS 1.3 only. Enrolment is NOT part of it.
+service AdminService {
+  // GetNonce returns a single-use nonce bound to this connection.
+  rpc GetNonce(GetNonceRequest) returns (GetNonceResponse);
+  // OpenSession turns one assertion into a short read-only session.
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+
+  rpc ListAdminCredentials(ListAdminCredentialsRequest) returns (ListAdminCredentialsResponse);
+  rpc RevokeAdminCredential(RevokeAdminCredentialRequest) returns (RevokeAdminCredentialResponse);
+
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc DisableUser(DisableUserRequest) returns (DisableUserResponse);
+
+  rpc BindIdentity(BindIdentityRequest) returns (BindIdentityResponse);
+  rpc ListIdentities(ListIdentitiesRequest) returns (ListIdentitiesResponse);
+  rpc UnbindIdentity(UnbindIdentityRequest) returns (UnbindIdentityResponse);
+}
+
+// EnrolService is served ONLY on a local Unix socket whose access is controlled
+// by file permissions. It is never registered on a network listener.
+service EnrolService {
+  // BeginEnrol returns the relying party id, a user handle and a challenge.
+  rpc BeginEnrol(BeginEnrolRequest) returns (BeginEnrolResponse);
+  // FinishEnrol verifies the attestation and stores the credential.
+  rpc FinishEnrol(FinishEnrolRequest) returns (FinishEnrolResponse);
+}
+
+message GetNonceRequest {}
+
+message GetNonceResponse {
+  bytes nonce = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message OpenSessionParams {}
+
+message OpenSessionRequest {
+  Envelope envelope = 1;
+}
+
+message OpenSessionResponse {
+  // session_token authorises read-only calls on this connection only.
+  bytes session_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message AdminCredential {
+  bytes credential_id = 1;
+  string name = 2;
+  string aaguid = 3;
+  uint32 sign_count = 4;
+  google.protobuf.Timestamp created_at = 5;
+  // revoked_at is unset while the credential is active.
+  google.protobuf.Timestamp revoked_at = 6;
+}
+
+message ListAdminCredentialsRequest {
+  bytes session_token = 1;
+}
+
+message ListAdminCredentialsResponse {
+  repeated AdminCredential credentials = 1;
+}
+
+message RevokeAdminCredentialParams {
+  bytes credential_id = 1;
+}
+
+message RevokeAdminCredentialRequest {
+  Envelope envelope = 1;
+}
+
+message RevokeAdminCredentialResponse {}
+
+message User {
+  string login = 1;
+  string display_name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  // disabled_at is unset while the user is enabled.
+  google.protobuf.Timestamp disabled_at = 4;
+}
+
+message CreateUserParams {
+  string login = 1;
+  string display_name = 2;
+}
+
+message CreateUserRequest {
+  Envelope envelope = 1;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message ListUsersRequest {
+  bytes session_token = 1;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message DisableUserParams {
+  string login = 1;
+}
+
+message DisableUserRequest {
+  Envelope envelope = 1;
+}
+
+message DisableUserResponse {}
+
+// Identity is an external identity, keyed on the issuer and the subject. There
+// is deliberately no e-mail field anywhere in this API.
+message Identity {
+  string issuer = 1;
+  string subject = 2;
+  string login = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message BindIdentityParams {
+  string issuer = 1;
+  string subject = 2;
+  string login = 3;
+}
+
+message BindIdentityRequest {
+  Envelope envelope = 1;
+}
+
+message BindIdentityResponse {
+  Identity identity = 1;
+}
+
+message ListIdentitiesRequest {
+  bytes session_token = 1;
+  // login, when set, restricts the list to one user.
+  string login = 2;
+}
+
+message ListIdentitiesResponse {
+  repeated Identity identities = 1;
+}
+
+message UnbindIdentityParams {
+  string issuer = 1;
+  string subject = 2;
+}
+
+message UnbindIdentityRequest {
+  Envelope envelope = 1;
+}
+
+message UnbindIdentityResponse {}
+
+message BeginEnrolRequest {}
+
+message BeginEnrolResponse {
+  string rp_id = 1;
+  bytes user_handle = 2;
+  bytes challenge = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message FinishEnrolRequest {
+  bytes challenge = 1;
+  string name = 2;
+  // authenticator_data is the raw authData of the attestation object.
+  bytes authenticator_data = 3;
+  // attestation_format is the attestation object's fmt ("packed").
+  string attestation_format = 4;
+  // attestation_statement is the attStmt of the attestation object, CBOR.
+  bytes attestation_statement = 5;
+}
+
+message FinishEnrolResponse {
+  AdminCredential credential = 1;
+}
