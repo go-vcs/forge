@@ -227,6 +227,14 @@ INSERT INTO admin_audit(at, method, outcome) VALUES (0, NULL, 'attempt');`)
 	})
 }
 
+func TestBindIdentityReportsAFailedUserLookup(t *testing.T) {
+	s := damaged(t, `DROP TABLE identities; DROP TABLE users;
+CREATE TABLE users(id INTEGER PRIMARY KEY, login TEXT);
+CREATE TABLE identities(issuer TEXT, subject TEXT, user_id INTEGER, created_at INTEGER);`)
+	_, err := s.BindIdentity(t.Context(), "https://i.example", "sub", "alice")
+	wantErr(t, "BindIdentity", err, "no such column")
+}
+
 func TestBindIdentityReportsAFailedInsert(t *testing.T) {
 	s := damaged(t, `INSERT INTO users(login, display_name, created_at) VALUES ('alice', 'A', 0); DROP TABLE identities;`)
 	_, err := s.BindIdentity(t.Context(), "https://i.example", "sub", "alice")
