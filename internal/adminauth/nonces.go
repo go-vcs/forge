@@ -156,8 +156,7 @@ func (n *Nonces) Issue(exporter []byte) ([]byte, time.Time) {
 	return append(b, n.mac(b, exporter)...), time.Unix(t.Unix(), 0).Add(n.ttl)
 }
 
-// check validates the MAC, the lifetime, the connection and the used-set, and
-// returns the random part and the expiry.
+// check validates the MAC, the lifetime and the connection, and returns the random part and the expiry.
 func (n *Nonces) check(nonce, exporter []byte) ([nonceRandLen]byte, time.Time, error) {
 	var r [nonceRandLen]byte
 	if len(nonce) != TokenLen {
@@ -174,19 +173,22 @@ func (n *Nonces) check(nonce, exporter []byte) ([nonceRandLen]byte, time.Time, e
 		return r, time.Time{}, ErrNonceExpired
 	}
 	copy(r[:], nonce[8:])
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if _, spent := n.used[r]; spent {
-		return r, time.Time{}, ErrNonceUnknown
-	}
 	return r, exp, nil
 }
 
 // Check reports whether nonce is acceptable on this connection, without
 // spending it.
 func (n *Nonces) Check(nonce, exporter []byte) error {
-	_, _, err := n.check(nonce, exporter)
-	return err
+	r, _, err := n.check(nonce, exporter)
+	if err != nil {
+		return err
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, spent := n.used[r]; spent {
+		return ErrNonceUnknown
+	}
+	return nil
 }
 
 // Spend marks the nonce of an accepted assertion as used. It is atomic: of two

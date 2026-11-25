@@ -180,6 +180,24 @@ func TestRefusesAFutureIssueTimeEdit(t *testing.T) {
 	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceUnknown)
 }
 
+func TestSpendIsAtomicAndChecksTheNonce(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	n := adminauth.NewNonces(func() time.Time { return now }, time.Minute, 4)
+	nonce, _ := n.Issue(exporterA)
+	wantErr(t, n.Spend(nonce[:10], exporterA), adminauth.ErrNonceUnknown)
+	wantErr(t, n.Spend(nonce, exporterB), adminauth.ErrNonceUnknown)
+	if err := n.Check(nonce, exporterA); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.Spend(nonce, exporterA); err != nil {
+		t.Fatal(err)
+	}
+	wantErr(t, n.Spend(nonce, exporterA), adminauth.ErrNonceUnknown)
+	wantErr(t, n.Check(nonce, exporterA), adminauth.ErrNonceUnknown)
+	now = now.Add(time.Minute)
+	wantErr(t, n.Spend(nonce, exporterA), adminauth.ErrNonceExpired)
+}
+
 func TestOnlyAcceptedNoncesAreRemembered(t *testing.T) {
 	e := newEnv(t)
 	for range 1000 {
