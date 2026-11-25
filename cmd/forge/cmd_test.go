@@ -175,11 +175,66 @@ func TestServeRefusals(t *testing.T) {
 			t.Fatalf("err = %v: an unverified MDS3 blob must stop the server", err)
 		}
 	})
+	bounded := func(t *testing.T) context.Context {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+		t.Cleanup(cancel)
+		return ctx
+	}
 	t.Run("world-readable key", func(t *testing.T) {
 		args, _, _ := baseArgs(t, a, 0o644)
-		_, _, err := run(t, t.Context(), args)
-		if err == nil {
-			t.Fatal("a 0644 TLS key was accepted")
+		_, _, err := run(t, bounded(t), args)
+		if err == nil || !strings.Contains(err.Error(), "k.pem") {
+			t.Fatalf("err = %v: a 0644 TLS key must stop the server, naming the file", err)
+		}
+	})
+	t.Run("certificate that is not a certificate", func(t *testing.T) {
+		args, _, _ := baseArgs(t, a, 0o600)
+		for i, v := range args {
+			if v == "--tls-cert" {
+				if err := os.WriteFile(args[i+1], []byte("not pem"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		_, _, err := run(t, bounded(t), args)
+		if err == nil || !strings.Contains(err.Error(), "tls:") {
+			t.Fatalf("err = %v, want the TLS loader's refusal", err)
+		}
+	})
+	t.Run("policy refuses missing roots", func(t *testing.T) {
+		loadRoots = func(string) (attest.Roots, error) { return nil, nil }
+		defer stubRoots(a)
+		args, _, _ := baseArgs(t, a, 0o600)
+		_, _, err := run(t, bounded(t), args)
+		if err == nil || strings.Contains(err.Error(), "context") {
+			t.Fatalf("err = %v: a policy without roots must stop the server", err)
+		}
+	})
+	t.Run("database that cannot be opened", func(t *testing.T) {
+		args, _, _ := baseArgs(t, a, 0o600)
+		for i, v := range args {
+			if v == "--db" {
+				args[i+1] = filepath.Join(shortDir(t), "no", "such", "dir", "forge.db")
+			}
+		}
+		_, _, err := run(t, bounded(t), args)
+		if err == nil || strings.Contains(err.Error(), "context") {
+			t.Fatalf("err = %v: an unopenable database must stop the server", err)
+		}
+	})
+	t.Run("a TLS configuration below 1.3", func(t *testing.T) {
+		old := tlsConfig
+		t.Cleanup(func() { tlsConfig = old })
+		tlsConfig = func(c tls.Certificate) *tls.Config {
+			cfg := old(c)
+			cfg.MinVersion = tls.VersionTLS12
+			return cfg
+		}
+		args, _, _ := baseArgs(t, a, 0o600)
+		_, _, err := run(t, bounded(t), args)
+		if err == nil || !strings.Contains(err.Error(), "TLS 1.3") {
+			t.Fatalf("err = %v: a TLS 1.2 server must not start", err)
 		}
 	})
 	t.Run("real loader refuses a missing blob", func(t *testing.T) {

@@ -26,6 +26,10 @@ import (
 // replace it; there is no flag that skips the verification.
 var loadRoots = verifiedRoots
 
+// tlsConfig builds the server's TLS configuration. Tests replace it to prove
+// NewAdminServer's refusal of anything below TLS 1.3 stops serve.
+var tlsConfig = adminsrv.TLSConfig
+
 func verifiedRoots(path string) (attest.Roots, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -155,7 +159,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		Sessions: adminauth.NewSessions(time.Now, 10*time.Minute, 8, 256),
 		Log:      log,
 	}
-	adminSrv, err := adminsrv.NewAdminServer(adminsrv.TLSConfig(cert), admin)
+	adminSrv, err := adminsrv.NewAdminServer(tlsConfig(cert), admin)
 	if err != nil {
 		return err
 	}
