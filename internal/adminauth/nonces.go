@@ -6,8 +6,11 @@ package adminauth
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/binary"
 	"errors"
 	"sync"
 	"time"
@@ -15,22 +18,23 @@ import (
 
 // Errors a nonce or session check returns.
 var (
-	ErrNonceUnknown         = errors.New("nonce unknown, already used or malformed")
-	ErrNonceExpired         = errors.New("nonce expired")
-	ErrNonceOtherConnection = errors.New("nonce was issued to another connection")
-	ErrTooManyNonces        = errors.New("too many outstanding nonces")
-	ErrSessionInvalid       = errors.New("session unknown, expired or malformed")
-	ErrSessionOtherConn     = errors.New("session belongs to another connection")
-	ErrTooManySessions      = errors.New("too many open sessions")
+	ErrNonceUnknown     = errors.New("nonce unknown, forged, already used, malformed or issued to another connection")
+	ErrNonceExpired     = errors.New("nonce expired")
+	ErrNonceStoreFull   = errors.New("too many accepted calls in one nonce lifetime")
+	ErrSessionInvalid   = errors.New("session unknown, expired or malformed")
+	ErrSessionOtherConn = errors.New("session belongs to another connection")
+	ErrTooManySessions  = errors.New("too many open sessions")
 )
 
 type record struct {
 	exporter []byte
-	owner    []byte // the credential that opened a session; nil for a nonce
+	owner    []byte // the credential that opened a session
 	expires  time.Time
 }
 
 // table is a bounded set of random 32-byte tokens, each bound to a connection.
+// It holds sessions: opening one needs a signed call, so a peer that has proved
+// nothing cannot fill it.
 type table struct {
 	mu      sync.Mutex
 	now     func() time.Time
@@ -71,9 +75,7 @@ func (t *table) issue(exporter, owner []byte, errTooMany error) ([]byte, time.Ti
 	return k[:], exp, nil
 }
 
-// take removes the token (whatever the outcome of the other checks, so a failed
-// attempt burns it) and reports why it is not acceptable, if it is not.
-func (t *table) take(tok, exporter []byte, burn bool, unknown, expired, other error) ([]byte, error) {
+func (t *table) take(tok, exporter []byte, unknown, expired, other error) ([]byte, error) {
 	if len(tok) != NonceLen {
 		return nil, unknown
 	}
@@ -85,9 +87,6 @@ func (t *table) take(tok, exporter []byte, burn bool, unknown, expired, other er
 	if !ok {
 		return nil, unknown
 	}
-	if burn {
-		delete(t.m, k)
-	}
 	if !t.now().Before(r.expires) {
 		delete(t.m, k)
 		return nil, expired
@@ -98,26 +97,126 @@ func (t *table) take(tok, exporter []byte, burn bool, unknown, expired, other er
 	return r.owner, nil
 }
 
-// Nonces issues and consumes the single-use nonces of signed calls.
-type Nonces struct{ t *table }
+// Layout of a stateless nonce: issue time (Unix seconds, big endian), 16 random
+// bytes, then HMAC-SHA-256 over a label, the first two fields and the TLS
+// exporter value of the connection it was issued on.
+const (
+	nonceRandLen = 16
+	nonceMACLen  = sha256.Size
+	// TokenLen is the length of a nonce.
+	TokenLen = 8 + nonceRandLen + nonceMACLen
+)
 
-// NewNonces returns a nonce store. A nonce lives ttl, a connection may hold
-// perConn outstanding nonces and the store total.
-func NewNonces(now func() time.Time, ttl time.Duration, perConn, total int) *Nonces {
-	return &Nonces{newTable(now, ttl, perConn, total)}
+// Nonces issues and consumes the single-use nonces of signed calls. It stores
+// nothing at issue time, so a peer that has proved nothing, however many
+// connections and nonces it asks for, uses no memory and takes no room from
+// anyone. The only state is the set of nonces of ACCEPTED assertions, kept until
+// they would have expired anyway: it cannot hold more than the number of
+// accepted (physically authorised) calls in one lifetime, and is capped.
+//
+// The MAC key is random and made when the process starts: nonces do not survive
+// a restart (at most one lifetime of an in-flight call is lost), and no key
+// file exists to protect.
+type Nonces struct {
+	now     func() time.Time
+	ttl     time.Duration
+	key     [32]byte
+	maxUsed int
+
+	mu   sync.Mutex
+	used map[[nonceRandLen]byte]time.Time // random part -> expiry
+}
+
+// NewNonces returns a nonce store. A nonce lives ttl; at most maxUsed accepted
+// nonces are remembered at once.
+func NewNonces(now func() time.Time, ttl time.Duration, maxUsed int) *Nonces {
+	if now == nil {
+		now = time.Now
+	}
+	n := &Nonces{now: now, ttl: ttl, maxUsed: maxUsed, used: map[[nonceRandLen]byte]time.Time{}}
+	rand.Read(n.key[:])
+	return n
+}
+
+func (n *Nonces) mac(head, exporter []byte) []byte {
+	h := hmac.New(sha256.New, n.key[:])
+	h.Write([]byte("go-vcs admin nonce v1"))
+	h.Write(head)
+	h.Write(exporter)
+	return h.Sum(nil)
 }
 
 // Issue returns a fresh nonce bound to the connection whose exporter value is
-// given.
-func (n *Nonces) Issue(exporter []byte) ([]byte, time.Time, error) {
-	return n.t.issue(exporter, nil, ErrTooManyNonces)
+// given. It never fails and stores nothing.
+func (n *Nonces) Issue(exporter []byte) ([]byte, time.Time) {
+	t := n.now()
+	b := make([]byte, 8+nonceRandLen, TokenLen)
+	binary.BigEndian.PutUint64(b, uint64(t.Unix()))
+	rand.Read(b[8:])
+	return append(b, n.mac(b, exporter)...), time.Unix(t.Unix(), 0).Add(n.ttl)
 }
 
-// Consume spends a nonce. It is gone afterwards even when it is refused, so a
-// replay, a wrong-connection use and an expiry each cost the caller the nonce.
-func (n *Nonces) Consume(nonce, exporter []byte) error {
-	_, err := n.t.take(nonce, exporter, true, ErrNonceUnknown, ErrNonceExpired, ErrNonceOtherConnection)
-	return err
+// check validates the MAC, the lifetime and the connection, and returns the random part and the expiry.
+func (n *Nonces) check(nonce, exporter []byte) ([nonceRandLen]byte, time.Time, error) {
+	var r [nonceRandLen]byte
+	if len(nonce) != TokenLen {
+		return r, time.Time{}, ErrNonceUnknown
+	}
+	// The MAC covers the exporter, so a nonce replayed on another connection
+	// fails here like a forgery: a peer learns nothing from telling them apart.
+	if !hmac.Equal(nonce[8+nonceRandLen:], n.mac(nonce[:8+nonceRandLen], exporter)) {
+		return r, time.Time{}, ErrNonceUnknown
+	}
+	exp := time.Unix(int64(binary.BigEndian.Uint64(nonce)), 0).Add(n.ttl)
+	now := n.now()
+	if !now.Before(exp) {
+		return r, time.Time{}, ErrNonceExpired
+	}
+	copy(r[:], nonce[8:])
+	return r, exp, nil
+}
+
+// Check reports whether nonce is acceptable on this connection, without
+// spending it.
+func (n *Nonces) Check(nonce, exporter []byte) error {
+	r, _, err := n.check(nonce, exporter)
+	if err != nil {
+		return err
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, spent := n.used[r]; spent {
+		return ErrNonceUnknown
+	}
+	return nil
+}
+
+// Spend marks the nonce of an accepted assertion as used. It is atomic: of two
+// calls carrying the same nonce, one gets ErrNonceUnknown. Nothing else ever
+// enters the used-set.
+func (n *Nonces) Spend(nonce, exporter []byte) error {
+	r, exp, err := n.check(nonce, exporter)
+	if err != nil {
+		return err
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, spent := n.used[r]; spent {
+		return ErrNonceUnknown
+	}
+	now := n.now()
+	if len(n.used) >= n.maxUsed {
+		for k, e := range n.used {
+			if !now.Before(e) {
+				delete(n.used, k)
+			}
+		}
+		if len(n.used) >= n.maxUsed {
+			return ErrNonceStoreFull
+		}
+	}
+	n.used[r] = exp
+	return nil
 }
 
 // Sessions holds the short read-only sessions opened by one assertion.
@@ -138,5 +237,5 @@ func (s *Sessions) Open(exporter, credentialID []byte) ([]byte, time.Time, error
 // the id of the credential that opened it, which the caller must still find
 // active.
 func (s *Sessions) Check(token, exporter []byte) ([]byte, error) {
-	return s.t.take(token, exporter, false, ErrSessionInvalid, ErrSessionInvalid, ErrSessionOtherConn)
+	return s.t.take(token, exporter, ErrSessionInvalid, ErrSessionInvalid, ErrSessionOtherConn)
 }

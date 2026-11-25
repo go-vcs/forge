@@ -51,7 +51,7 @@ func TestACounterStoreFailureRefusesTheCall(t *testing.T) {
 
 func TestOnlyThisPackagesVerdictsAreRefusals(t *testing.T) {
 	for _, err := range []error{
-		adminauth.ErrNonceUnknown, adminauth.ErrNonceExpired, adminauth.ErrNonceOtherConnection,
+		adminauth.ErrNonceUnknown, adminauth.ErrNonceExpired,
 		adminauth.ErrUnknownCredential, adminauth.ErrMalformed, adminauth.ErrRPIDMismatch,
 		adminauth.ErrNotPresent, adminauth.ErrNotVerified, adminauth.ErrBadSignature,
 		adminauth.ErrCounterRegression,
@@ -62,7 +62,7 @@ func TestOnlyThisPackagesVerdictsAreRefusals(t *testing.T) {
 	}
 	// What a store says when it breaks is not a verdict on the assertion, and
 	// neither are the limits of the tables, which Verify never returns.
-	for _, err := range []error{nil, errors.New("disk full"), context.Canceled, adminauth.ErrTooManyNonces, adminauth.ErrSessionInvalid} {
+	for _, err := range []error{nil, errors.New("disk full"), context.Canceled, adminauth.ErrNonceStoreFull, adminauth.ErrSessionInvalid} {
 		if adminauth.IsRefusal(err) {
 			t.Fatalf("%v is a refusal", err)
 		}

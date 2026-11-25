@@ -33,7 +33,7 @@ var (
 // proved nothing.
 func IsRefusal(err error) bool {
 	for _, r := range []error{
-		ErrNonceUnknown, ErrNonceExpired, ErrNonceOtherConnection,
+		ErrNonceUnknown, ErrNonceExpired,
 		ErrUnknownCredential, ErrMalformed, ErrRPIDMismatch, ErrNotPresent,
 		ErrNotVerified, ErrBadSignature, ErrCounterRegression,
 	} {
@@ -67,8 +67,8 @@ type Credentials interface {
 	// does not exist or is revoked.
 	ActiveCredential(ctx context.Context, id []byte) (Credential, error)
 	// AdvanceCounter records the counter of an accepted assertion atomically,
-	// and returns ErrCounterRegression when it is lower than the stored one
-	// (or zero while the stored one is not).
+	// and returns ErrCounterRegression unless it is greater than the stored one
+	// (both zero is accepted: an authenticator that keeps no counter).
 	AdvanceCounter(ctx context.Context, id []byte, count uint32) error
 }
 
@@ -96,15 +96,14 @@ type Verifier struct {
 }
 
 // Verify accepts the assertion only if every check passes, and returns the
-// credential that signed. The nonce is spent first, whatever follows.
+// credential that signed. The nonce is checked first and spent last: only an
+// accepted assertion spends it.
 func (v *Verifier) Verify(ctx context.Context, in Input) (Credential, error) {
 	if len(in.CredentialID) == 0 || len(in.CredentialID) > MaxCredentialIDLen ||
 		len(in.AuthenticatorData) > MaxAuthDataLen || len(in.Signature) > MaxSignatureLen {
-		// Still burn the nonce: a caller who sends junk learns nothing and keeps nothing.
-		_ = v.Nonces.Consume(in.Nonce, in.Exporter)
 		return Credential{}, fmt.Errorf("%w: field size", ErrMalformed)
 	}
-	if err := v.Nonces.Consume(in.Nonce, in.Exporter); err != nil {
+	if err := v.Nonces.Check(in.Nonce, in.Exporter); err != nil {
 		return Credential{}, err
 	}
 	cred, err := v.Credentials.ActiveCredential(ctx, in.CredentialID)
@@ -133,12 +132,21 @@ func (v *Verifier) Verify(ctx context.Context, in Input) (Credential, error) {
 	if !ecdsa.VerifyASN1(cred.PublicKey, digest[:], in.Signature) {
 		return Credential{}, ErrBadSignature
 	}
-	// A stored counter of zero means the authenticator keeps none. Once it
-	// has been seen non-zero it must never go down, and zero is down.
-	if cred.SignCount != 0 && ad.SignCount < cred.SignCount {
+	// WebAuthn Level 3, 7.2 "Verifying an Authentication Assertion", the
+	// signature counter step: when authData.signCount is non-zero OR the stored
+	// value is non-zero, the new value must be GREATER than the stored one;
+	// "less than or equal" is a signal, not proof, of a cloned authenticator.
+	// Both zero means the authenticator keeps no counter. The spec makes
+	// failing the ceremony RP-specific; our policy is refusal, equal included,
+	// since a replayed or cloned authenticator repeats a value.
+	if (cred.SignCount != 0 || ad.SignCount != 0) && ad.SignCount <= cred.SignCount {
 		return Credential{}, ErrCounterRegression
 	}
 	if err := v.Credentials.AdvanceCounter(ctx, in.CredentialID, ad.SignCount); err != nil {
+		return Credential{}, err
+	}
+	// Only now, with the assertion accepted, does the nonce enter the used-set.
+	if err := v.Nonces.Spend(in.Nonce, in.Exporter); err != nil {
 		return Credential{}, err
 	}
 	cred.SignCount = ad.SignCount

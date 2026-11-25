@@ -82,7 +82,7 @@ func newRig(t *testing.T) *rig {
 	if err := os.WriteFile(r.caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	nonces := adminauth.NewNonces(time.Now, time.Minute, 64, 256)
+	nonces := adminauth.NewNonces(time.Now, time.Minute, 256)
 	adm := &adminsrv.Admin{
 		Store:    st,
 		Verifier: &adminauth.Verifier{RPID: rpID, Credentials: st, Nonces: nonces},
@@ -163,6 +163,10 @@ func TestWorkflow(t *testing.T) {
 	}
 	if out, _ := r.admin("identities", "list"); strings.Contains(out, "sub-1") {
 		t.Fatalf("unbound identity still listed: %q", out)
+	}
+	// The last active credential cannot be revoked: add a spare first.
+	if _, err := r.st.AddCredential(t.Context(), []byte("spare"), &r.auth.Key.PublicKey, "a", "spare"); err != nil {
+		t.Fatal(err)
 	}
 	out, err := r.admin("credentials", "revoke", hex.EncodeToString(r.auth.CredID))
 	if err != nil || !strings.Contains(out, "revoked") {

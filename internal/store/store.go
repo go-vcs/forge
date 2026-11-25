@@ -238,8 +238,8 @@ func (s *Store) ActiveCredential(ctx context.Context, id []byte) (adminauth.Cred
 
 // AdvanceCounter implements [adminauth.Credentials].
 func (s *Store) AdvanceCounter(ctx context.Context, id []byte, count uint32) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE admin_credentials SET sign_count = ? WHERE credential_id = ? AND revoked_at IS NULL AND (sign_count = 0 OR sign_count <= ?)`,
-		int64(count), id, int64(count))
+	res, err := s.db.ExecContext(ctx, `UPDATE admin_credentials SET sign_count = ? WHERE credential_id = ? AND revoked_at IS NULL AND ((sign_count = 0 AND ? = 0) OR sign_count < ?)`,
+		int64(count), id, int64(count), int64(count))
 	if err != nil {
 		return err
 	}
@@ -270,16 +270,30 @@ func (s *Store) ListCredentials(ctx context.Context) ([]AdminCredential, error) 
 	return out, rows.Err()
 }
 
-// RevokeCredential revokes an active credential.
+// ErrLastCredential is returned when a revocation would leave no active admin
+// credential, which would lock every administrator out.
+var ErrLastCredential = errors.New("store: refusing to revoke the last active admin credential")
+
+// RevokeCredential revokes an active credential, unless it is the last one. The
+// count and the update are one statement, so two concurrent revocations of the
+// last two credentials cannot both succeed.
 func (s *Store) RevokeCredential(ctx context.Context, id []byte) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE admin_credentials SET revoked_at = ? WHERE credential_id = ? AND revoked_at IS NULL`, s.now().Unix(), id)
+	res, err := s.db.ExecContext(ctx, `UPDATE admin_credentials SET revoked_at = ? WHERE credential_id = ? AND revoked_at IS NULL
+		AND (SELECT count(*) FROM admin_credentials WHERE revoked_at IS NULL) > 1`, s.now().Unix(), id)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return ErrNotFound
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
 	}
-	return nil
+	var active int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM admin_credentials WHERE credential_id = ? AND revoked_at IS NULL`, id).Scan(&active); err != nil {
+		return err
+	}
+	if active == 1 {
+		return ErrLastCredential
+	}
+	return ErrNotFound
 }
 
 // ActiveCredentialCount is how many credentials can still authenticate.
