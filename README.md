@@ -18,7 +18,8 @@ for the goals, the security invariants, how the work is split between
 agent-oriented layer on top of git: writes and reads without a clone, change
 ids stable across rebase, merges only on a CI verdict for the exact merged
 commit, path-scoped leases, one local daemon per machine, and atomic changes
-across repositories. Git stays the storage and interchange format.
+across repositories. Git stays the storage and interchange format. The first
+milestone is the local daemon against GitHub, before the forge hosts anything.
 
 ## Administration with a FIDO2 key
 

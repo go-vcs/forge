@@ -1,6 +1,7 @@
 # Agent-oriented version control on top of git
 
-Status: design, 2026-11-25. Nothing here is implemented. It extends
+Status: design approved 2026-11-25 (see [Decisions](#decisions)). Nothing
+here is implemented. It extends
 [design.md](design.md) and inherits all of its invariants; where this document
 and design.md disagree, design.md wins until this one is amended.
 
@@ -118,10 +119,9 @@ required by the target ref's policy has a `SUCCESS` verdict on *that commit*
 with at least one job; `RED` if any required check has another conclusion;
 `PENDING` otherwise. A missing check is `PENDING`, never `GREEN`.
 
-Verdicts are keyed by commit, not by tree. Two commits with the same tree
-usually deserve the same verdict, but CI can read commit metadata (version
-stamping from `git describe`, for instance); reusing verdicts across commits
-with equal trees is an optimisation left as an open question.
+Verdicts are keyed by commit, not by tree, and are never reused for another
+commit with an equal tree (decision 2): CI can read commit metadata (version
+stamping from `git describe`, for instance) and its environment can differ.
 
 Agents cannot write verdicts. Only the Actions subsystem does, from the run it
 scheduled on that exact commit.
@@ -307,7 +307,8 @@ The operation, run by the repository's writer (see Concurrency):
    resolves with `UpdateChange` and merges the new revision.
 3. `C` gets a candidate ref; the Actions subsystem runs the target's required
    checks on `C`.
-4. When the gate verdict for `C` is `GREEN`, the writer moves the target from
+4. When the gate verdict for `C` is `GREEN` and, for a protected target, a
+   signed human approval of this revision exists (decision 3), the writer moves the target from
    `T` to `C` with a compare-and-swap. If the target is no longer `T`, go back
    to 1 with the new `T` (at most 5 rebuilds, then `TARGET_CHURN`). If `RED`,
    the operation ends `VERDICT_RED` naming `C` and the failing checks.
@@ -463,7 +464,7 @@ What a crash leaves:
 |---|---|---|
 | User | Admin API only (design.md); signs in through the bridge. | Per repository role; approves, administers through FIDO2-signed calls. |
 | Host | Enrolled by a FIDO2-signed admin call `EnrolHost(name, public key, owner)`. | Open agent sessions for its owner. Nothing else. |
-| Agent session | `OpenAgentSession(host-signed, label, repos, ttl)`: owned by the host's owner, at most 12 hours, at most 64 live per host. | Read; create and update changes; acquire leases; request merges of protected refs through the gate; `UpdateRef` on unprotected refs. Never: admin calls, ACL or policy changes, deleting refs, force updates, writing verdicts, approving its own change where a policy requires a human. |
+| Agent session | `OpenAgentSession(host-signed, label, repos, ttl)`: owned by the host's owner, at most 12 hours, at most 64 live per host. | Read; create and update changes; acquire leases; request merges of protected refs through the gate; `UpdateRef` on unprotected refs. Never: admin calls, ACL or policy changes, deleting refs, force updates, writing verdicts, approving any change. |
 | CI job | Job token (design.md, Actions), scoped to the repository and the job. | Read; write verdicts only through the Actions subsystem. |
 
 An agent session is never created by signing in, and is always attributed to
@@ -506,7 +507,7 @@ hide a directory from a reader who can clone.
 | Open changes | 10 000 per repository; 1 000 revisions per change |
 | Idempotency rows | 100 000 per principal, 24 h |
 | Concurrency | 8 concurrent writes and 64 streams per principal |
-| Change set | 64 repositories |
+| Change set | 64 repositories (decision 5) |
 
 Fuzz targets (corpus committed): path validator, trailer parser, change-id and
 cursor parsers, `FileEdit` application against a tree, merge-tree `-z` output
@@ -588,36 +589,71 @@ identical tree ids), on every benchmark corpus.
 
 ## Milestones
 
-Placed in design.md's list after milestone 4 (receive-pack), as `A1`…`A5`:
+`A0` comes first and does not wait for the forge (decision 1); `A1`…`A5` sit in
+design.md's list after milestones 4 and 5:
 
-- **A1 (after 4).** `RepoService` reads; `CreateChange`, `UpdateChange`,
-  `AbandonChange`, revision refs and trailers; `UpdateRef` compare-and-swap on
-  unprotected refs; `WriteHeader` idempotency with intents; error model; hosts
-  and agent sessions (direct to the server, no daemon yet). Benchmarks rows 1, 4,
-  5. Protected refs are not movable through the API before A2.
-- **A2 (after 5, Actions).** Verdicts, gate verdicts, `Merge` with candidates and
-  the speculative queue, `WaitVerdict`, `EventService`.
+- **A0 (now, independent of the forge milestones).** `forge-agentd` with a
+  **GitHub backend**: the local protocol, the verified object cache,
+  `Materialize`, one poller per machine feeding the local event stream, and
+  `WaitVerdict` answered from it, always naming the full commit id it judged.
+  The GitHub credential is held by the daemon only, read from a file of mode
+  0600 or the system keychain, never from argv or environment. Operations whose
+  guarantees need the forge (the gate and the ref move as one step, enforced
+  leases, change sets, signed commits) answer `UNSUPPORTED_BY_BACKEND`, never a
+  weaker imitation. Benchmark row 6 (requests per hour) is its acceptance test.
+- **A1 (after 4).** Server side: `RepoService` reads; `CreateChange`,
+  `UpdateChange`, `AbandonChange`, revision refs and trailers; server-signed
+  commits; `UpdateRef` compare-and-swap on unprotected refs; `WriteHeader`
+  idempotency with intents; error model; hosts and agent sessions. Benchmarks
+  rows 1, 4, 5. Protected refs are not movable through the API before A2.
+- **A2 (after 5, Actions).** Verdicts, gate verdicts, signed human approvals,
+  `Merge` with candidates and the speculative queue, `WaitVerdict`,
+  `EventService`.
 - **A3.** Leases with fencing epochs, path permissions.
-- **A4.** `forge-agentd`: cache, `Materialize`, event fan-out, session tokens held
-  by the daemon only.
+- **A4.** `forge-agentd` gains the **forge backend** behind the same local API:
+  agent-session tokens held by the daemon only, the upstream event stream
+  replacing the poller for forge-hosted repositories.
 - **A5.** Change sets: joint CI, two-phase merge, recovery, the `PARTIAL` state.
 
-## Open questions
+## Decisions
 
-1. Until repositories move to the forge, the frictions happen on GitHub. Is a
-   GitHub-backed `forge-agentd` (one poller and cache for the whole machine,
-   speaking the same local protocol) worth building first?
-2. Reuse verdicts across commits with identical trees (saves a CI run after a
-   no-op rebase), or keep them per commit?
-3. Should protected refs require a FIDO2-signed human approval per merge, or is
-   the gate verdict enough for agent changes on some repositories?
-4. Should the server sign the commits it builds (SSH signature with a forge
-   key)?
-5. Is 64 repositories per change set enough for lock-step bumps across the
-   organisations, or must large sets be split into ordered waves (giving up
-   all-or-nothing between waves)?
-6. Reuse Gerrit's `Change-Id` trailer name (tool compatibility) or a forge-own
-   name (no confusion with a Gerrit instance's ids)?
+The questions left open by the first draft, answered by the maintainer on
+2026-11-25:
+
+1. **The GitHub-backed daemon comes first** (milestone A0). The frictions happen
+   on GitHub today, so the fleet gets the shared cache and the single event
+   stream now; the forge backend arrives later behind the same daemon API, so
+   agents do not change when repositories move.
+2. **No verdict reuse across commits with the same tree.** A verdict binds to
+   the exact commit id: the CI environment, and what a job reads from commit
+   metadata, may differ between two commits even when their trees are equal.
+3. **A merge into a protected ref requires a FIDO2-signed human approval**, in
+   addition to the green gate. `Approve(change_id, revision, revision_commit)` is
+   a signed call with the admin envelope ([admin-api.md](admin-api.md): server
+   nonce, request hash, TLS exporter, UP and UV), under the label
+   `go-vcs approve v1`, by a user whose role on the ref permits it. It binds the
+   reviewed revision's commit; a new revision needs a new approval. The gate
+   still binds the candidate commit, which can differ from the revision after a
+   server-side rebase; the approval says which content a human accepted, the
+   gate says the exact commit that lands is green. An agent session can never
+   approve.
+4. **The server signs every commit it builds** (revisions, rebases, merge
+   commits) with an SSH signing key that never leaves the server: it is read
+   from a systemd credential at start, kept in memory, and no API returns it.
+   Verification is published as an `allowed_signers` file (the format git's
+   `gpg.ssh.allowedSignersFile` reads) at a fixed HTTPS path of the forge and
+   through a read call of the admin API, listing every key the forge has ever
+   used with its validity interval, so that commits signed before a rotation
+   still verify. A commit pushed by a client keeps the client's own signature,
+   or none. The exact signature and `allowed_signers` formats are to be read
+   before A1 (see below).
+5. **64 repositories per change set** is the initial bound. A set with a 65th
+   change is refused `BOUND_EXCEEDED`, and a test proves the refusal. Larger
+   lock-step updates are split by their author into ordered sets, each
+   all-or-nothing on its own.
+6. **The trailer keeps Gerrit's name, `Change-Id`**, because existing tooling
+   (commit-msg hooks, review tools, `git interpret-trailers` users) already
+   reads it.
 
 ## Sources read for this document
 
@@ -634,9 +670,10 @@ Placed in design.md's list after milestone 4 (receive-pack), as `A1`…`A5`:
   `go-vcs/gitproto` README (Repository interface, git invocation rules).
 
 To read before the matching milestone: git `fsck.c` and `read-cache.c`
-(`verify_path`) for A1's path rules; `gitformat-signature` if open question 4
-is answered yes; the GitHub REST conditional-request documentation for open
-question 1.
+(`verify_path`) for A1's path rules; `gitformat-signature` and the
+`ALLOWED SIGNERS` section of `ssh-keygen(1)` for decision 4, before A1; the
+GitHub REST documentation on rate limits, conditional requests and check runs
+for the A0 backend, before A0.
 
 [scion]: https://www.anthropic.com/engineering/redesigning-source-control
 [mergetree]: https://git-scm.com/docs/git-merge-tree
