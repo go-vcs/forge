@@ -114,6 +114,12 @@ func (a *Admin) authorize(ctx context.Context, env *adminv1.Envelope) ([]byte, *
 		},
 	})
 	if err != nil {
+		if !adminauth.IsRefusal(err) {
+			// The store failed while the assertion was being checked. The peer
+			// has proved nothing yet, so it is told nothing of the cause.
+			a.logf("assertion not checked", "method", method, "error", err.Error())
+			return nil, nil, status.Error(codes.Internal, "internal error")
+		}
 		a.logf("assertion refused", "method", method, "reason", err.Error())
 		return nil, nil, status.Error(codes.Unauthenticated, "assertion refused: "+err.Error())
 	}

@@ -262,6 +262,40 @@ func TestStoreFailuresAreInternalNotLeaked(t *testing.T) {
 	})
 }
 
+// A storage failure while an assertion is being checked is the server's own. It
+// is Internal and undescribed: the credential lookup runs before the signature
+// is verified, so the peer who sees the answer is anyone who can reach the port.
+func TestAStoreFailureDuringVerificationIsInternalNotLeaked(t *testing.T) {
+	undescribed := func(t *testing.T, err error, detail string) {
+		t.Helper()
+		wantStatus(t, "store failure", err, codes.Internal, "internal error")
+		if msg := status.Convert(err).Message(); strings.Contains(msg, detail) {
+			t.Fatalf("the peer was told %q", msg)
+		}
+	}
+	t.Run("credential lookup, with no valid signature", func(t *testing.T) {
+		f := newForge(t)
+		f.mustEnrol()
+		c := f.dial()
+		f.rawExec(`ALTER TABLE admin_credentials RENAME COLUMN public_key TO pk`)
+		env := f.envelope(c, adminv1.AdminService_CreateUser_FullMethodName, params("alice"),
+			tweak{mutate: func(e *adminv1.Envelope) { e.Signature[0] ^= 1 }})
+		undescribed(t, createUser(c, env), "public_key")
+		if !strings.Contains(f.logs.String(), "assertion not checked") {
+			t.Fatalf("the failure was not logged: %s", f.logs)
+		}
+	})
+	t.Run("counter update", func(t *testing.T) {
+		f := newForge(t)
+		f.mustEnrol()
+		c := f.dial()
+		f.rawExec(`CREATE TRIGGER nocount BEFORE UPDATE ON admin_credentials BEGIN SELECT RAISE(ABORT, 'trigger detail'); END`)
+		_, err := c.CreateUser(t.Context(), "alice", "Alice")
+		undescribed(t, err, "trigger detail")
+		f.wantUsers(0)
+	})
+}
+
 func TestAuditFailures(t *testing.T) {
 	t.Run("attempt row not written refuses the call", func(t *testing.T) {
 		f := newForge(t)
