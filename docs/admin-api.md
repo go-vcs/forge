@@ -39,8 +39,8 @@ Each refusal is `Unauthenticated`, with a reason, and changes nothing.
 
 Read calls (`List*`) take a session token from `OpenSession`, itself a signed
 call. A token is bound to the connection it was issued on and expires.
-Known limit: revoking a credential does not end sessions it already opened; they
-expire by themselves.
+A session records the credential that opened it, and every read call checks
+that credential is still active: revoking it ends its sessions at once.
 
 ## Enrolment
 
@@ -52,8 +52,11 @@ verifies the `packed` attestation: signature, chain to the roots of the MDS3 blo
 leaf AAGUID extension and certificate subject, UP, UV, no backup flags, relying
 party, and the AAGUID allowlist. Self and `none` attestation are refused.
 
-## Known limit
+## Audit
 
-The audit row of a signed call is written when the call is authorized, before
-the action runs; a call refused later still leaves its row. The row is evidence
-of an authorized attempt, not of success.
+A signed call leaves two rows in `admin_audit`: an `attempt` row when it is
+authorized, before the action runs, then a `success` or `failure` row once the
+action has ended. A call whose assertion is refused leaves none. A crash between
+the two leaves an attempt with no outcome, which is itself the evidence. If the
+outcome row cannot be written it is logged and the caller still gets the
+action's own result.

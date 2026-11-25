@@ -26,6 +26,7 @@ var (
 
 type record struct {
 	exporter []byte
+	owner    []byte // the credential that opened a session; nil for a nonce
 	expires  time.Time
 }
 
@@ -46,7 +47,7 @@ func newTable(now func() time.Time, ttl time.Duration, perConn, total int) *tabl
 	return &table{now: now, ttl: ttl, perConn: perConn, total: total, m: map[[NonceLen]byte]record{}}
 }
 
-func (t *table) issue(exporter []byte, errTooMany error) ([]byte, time.Time, error) {
+func (t *table) issue(exporter, owner []byte, errTooMany error) ([]byte, time.Time, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.now()
@@ -66,15 +67,15 @@ func (t *table) issue(exporter []byte, errTooMany error) ([]byte, time.Time, err
 	var k [NonceLen]byte
 	rand.Read(k[:]) // never fails: crypto/rand.Read aborts the program instead
 	exp := now.Add(t.ttl)
-	t.m[k] = record{exporter: append([]byte(nil), exporter...), expires: exp}
+	t.m[k] = record{exporter: append([]byte(nil), exporter...), owner: append([]byte(nil), owner...), expires: exp}
 	return k[:], exp, nil
 }
 
 // take removes the token (whatever the outcome of the other checks, so a failed
 // attempt burns it) and reports why it is not acceptable, if it is not.
-func (t *table) take(tok, exporter []byte, burn bool, unknown, expired, other error) error {
+func (t *table) take(tok, exporter []byte, burn bool, unknown, expired, other error) ([]byte, error) {
 	if len(tok) != NonceLen {
-		return unknown
+		return nil, unknown
 	}
 	var k [NonceLen]byte
 	copy(k[:], tok)
@@ -82,19 +83,19 @@ func (t *table) take(tok, exporter []byte, burn bool, unknown, expired, other er
 	defer t.mu.Unlock()
 	r, ok := t.m[k]
 	if !ok {
-		return unknown
+		return nil, unknown
 	}
 	if burn {
 		delete(t.m, k)
 	}
 	if !t.now().Before(r.expires) {
 		delete(t.m, k)
-		return expired
+		return nil, expired
 	}
 	if subtle.ConstantTimeCompare(r.exporter, exporter) != 1 {
-		return other
+		return nil, other
 	}
-	return nil
+	return r.owner, nil
 }
 
 // Nonces issues and consumes the single-use nonces of signed calls.
@@ -109,13 +110,14 @@ func NewNonces(now func() time.Time, ttl time.Duration, perConn, total int) *Non
 // Issue returns a fresh nonce bound to the connection whose exporter value is
 // given.
 func (n *Nonces) Issue(exporter []byte) ([]byte, time.Time, error) {
-	return n.t.issue(exporter, ErrTooManyNonces)
+	return n.t.issue(exporter, nil, ErrTooManyNonces)
 }
 
 // Consume spends a nonce. It is gone afterwards even when it is refused, so a
 // replay, a wrong-connection use and an expiry each cost the caller the nonce.
 func (n *Nonces) Consume(nonce, exporter []byte) error {
-	return n.t.take(nonce, exporter, true, ErrNonceUnknown, ErrNonceExpired, ErrNonceOtherConnection)
+	_, err := n.t.take(nonce, exporter, true, ErrNonceUnknown, ErrNonceExpired, ErrNonceOtherConnection)
+	return err
 }
 
 // Sessions holds the short read-only sessions opened by one assertion.
@@ -126,12 +128,15 @@ func NewSessions(now func() time.Time, ttl time.Duration, perConn, total int) *S
 	return &Sessions{newTable(now, ttl, perConn, total)}
 }
 
-// Open returns a session token bound to the connection.
-func (s *Sessions) Open(exporter []byte) ([]byte, time.Time, error) {
-	return s.t.issue(exporter, ErrTooManySessions)
+// Open returns a session token bound to the connection and to the credential
+// that opened it.
+func (s *Sessions) Open(exporter, credentialID []byte) ([]byte, time.Time, error) {
+	return s.t.issue(exporter, credentialID, ErrTooManySessions)
 }
 
-// Check accepts a token only on the connection it was opened on.
-func (s *Sessions) Check(token, exporter []byte) error {
+// Check accepts a token only on the connection it was opened on, and returns
+// the id of the credential that opened it, which the caller must still find
+// active.
+func (s *Sessions) Check(token, exporter []byte) ([]byte, error) {
 	return s.t.take(token, exporter, false, ErrSessionInvalid, ErrSessionInvalid, ErrSessionOtherConn)
 }

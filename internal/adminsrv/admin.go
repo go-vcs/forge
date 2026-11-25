@@ -74,20 +74,42 @@ func (a *Admin) logf(msg string, args ...any) {
 	}
 }
 
-// authorize verifies the envelope of a mutating call. On success the raw
-// parameter bytes are returned for unmarshalling: the signature covered those
-// exact bytes.
-func (a *Admin) authorize(ctx context.Context, env *adminv1.Envelope) ([]byte, adminauth.Credential, error) {
+// act is an authorized administrative call, whose outcome is audited.
+type act struct {
+	cred   adminauth.Credential
+	method string
+	sum    [32]byte
+}
+
+// finish records how an authorized call ended, from the error it is about to
+// return (nil is success). The attempt row already exists, so a failure to
+// write this one is logged and does not change what the caller is told: the
+// action has run.
+func (a *Admin) finish(ctx context.Context, x *act, err error) {
+	outcome := store.OutcomeSuccess
+	if err != nil {
+		outcome = store.OutcomeFailure
+	}
+	// The call's context may be cancelled by now; the row is still owed.
+	if e := a.Store.Audit(context.WithoutCancel(ctx), x.cred.ID, x.method, x.sum[:], outcome); e != nil {
+		a.logf("audit row not written", "method", x.method, "outcome", outcome, "error", e.Error())
+	}
+}
+
+// authorize verifies the envelope of a mutating call and writes its attempt
+// row. On success the raw parameter bytes are returned for unmarshalling: the
+// signature covered those exact bytes. The caller must then call finish.
+func (a *Admin) authorize(ctx context.Context, env *adminv1.Envelope) ([]byte, *act, error) {
 	if env == nil || len(env.Request) > MaxRequestLen {
-		return nil, adminauth.Credential{}, status.Error(codes.InvalidArgument, "missing or oversized envelope")
+		return nil, nil, status.Error(codes.InvalidArgument, "missing or oversized envelope")
 	}
 	method, ok := grpc.Method(ctx)
 	if !ok {
-		return nil, adminauth.Credential{}, status.Error(codes.Internal, "no method")
+		return nil, nil, status.Error(codes.Internal, "no method")
 	}
 	exp, err := Exporter(ctx)
 	if err != nil {
-		return nil, adminauth.Credential{}, err
+		return nil, nil, err
 	}
 	cred, err := a.Verifier.Verify(ctx, adminauth.Input{
 		Method: method, Nonce: env.Nonce, Request: env.Request, Exporter: exp,
@@ -97,23 +119,32 @@ func (a *Admin) authorize(ctx context.Context, env *adminv1.Envelope) ([]byte, a
 	})
 	if err != nil {
 		a.logf("assertion refused", "method", method, "reason", err.Error())
-		return nil, adminauth.Credential{}, status.Error(codes.Unauthenticated, "assertion refused: "+err.Error())
+		return nil, nil, status.Error(codes.Unauthenticated, "assertion refused: "+err.Error())
 	}
-	sum := sha256.Sum256(env.Request)
-	if err := a.Store.Audit(ctx, cred.ID, method, sum[:]); err != nil {
-		return nil, adminauth.Credential{}, status.Error(codes.Internal, "audit")
+	x := &act{cred: cred, method: method, sum: sha256.Sum256(env.Request)}
+	if err := a.Store.Audit(ctx, cred.ID, method, x.sum[:], store.OutcomeAttempt); err != nil {
+		return nil, nil, status.Error(codes.Internal, "audit")
 	}
-	return env.Request, cred, nil
+	return env.Request, x, nil
 }
 
-// readOnly checks the session token of a read-only call.
+// readOnly checks the session token of a read-only call, and that the
+// credential that opened the session is still active: revoking a credential
+// ends its sessions at once.
 func (a *Admin) readOnly(ctx context.Context, token []byte) error {
 	exp, err := Exporter(ctx)
 	if err != nil {
 		return err
 	}
-	if err := a.Sessions.Check(token, exp); err != nil {
+	owner, err := a.Sessions.Check(token, exp)
+	if err != nil {
 		return status.Error(codes.Unauthenticated, "session refused: "+err.Error())
+	}
+	if _, err := a.Verifier.Credentials.ActiveCredential(ctx, owner); err != nil {
+		if errors.Is(err, adminauth.ErrUnknownCredential) {
+			return status.Error(codes.Unauthenticated, "session refused: its credential is revoked")
+		}
+		return status.Error(codes.Internal, "credential lookup")
 	}
 	return nil
 }
@@ -153,11 +184,12 @@ func (a *Admin) GetNonce(ctx context.Context, _ *adminv1.GetNonceRequest) (*admi
 }
 
 // OpenSession implements AdminService.
-func (a *Admin) OpenSession(ctx context.Context, r *adminv1.OpenSessionRequest) (*adminv1.OpenSessionResponse, error) {
-	raw, _, err := a.authorize(ctx, r.GetEnvelope())
+func (a *Admin) OpenSession(ctx context.Context, r *adminv1.OpenSessionRequest) (_ *adminv1.OpenSessionResponse, err error) {
+	raw, x, err := a.authorize(ctx, r.GetEnvelope())
 	if err != nil {
 		return nil, err
 	}
+	defer func() { a.finish(ctx, x, err) }()
 	if err := parse(raw, &adminv1.OpenSessionParams{}); err != nil {
 		return nil, err
 	}
@@ -165,7 +197,7 @@ func (a *Admin) OpenSession(ctx context.Context, r *adminv1.OpenSessionRequest) 
 	if err != nil {
 		return nil, err
 	}
-	tok, until, err := a.Sessions.Open(exp)
+	tok, until, err := a.Sessions.Open(exp, x.cred.ID)
 	if err != nil {
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
 	}
@@ -200,11 +232,12 @@ func (a *Admin) ListAdminCredentials(ctx context.Context, r *adminv1.ListAdminCr
 }
 
 // RevokeAdminCredential implements AdminService.
-func (a *Admin) RevokeAdminCredential(ctx context.Context, r *adminv1.RevokeAdminCredentialRequest) (*adminv1.RevokeAdminCredentialResponse, error) {
-	raw, _, err := a.authorize(ctx, r.GetEnvelope())
+func (a *Admin) RevokeAdminCredential(ctx context.Context, r *adminv1.RevokeAdminCredentialRequest) (_ *adminv1.RevokeAdminCredentialResponse, err error) {
+	raw, x, err := a.authorize(ctx, r.GetEnvelope())
 	if err != nil {
 		return nil, err
 	}
+	defer func() { a.finish(ctx, x, err) }()
 	var p adminv1.RevokeAdminCredentialParams
 	if err := parse(raw, &p); err != nil {
 		return nil, err
@@ -224,11 +257,12 @@ func userPB(u store.User) *adminv1.User {
 }
 
 // CreateUser implements AdminService.
-func (a *Admin) CreateUser(ctx context.Context, r *adminv1.CreateUserRequest) (*adminv1.CreateUserResponse, error) {
-	raw, _, err := a.authorize(ctx, r.GetEnvelope())
+func (a *Admin) CreateUser(ctx context.Context, r *adminv1.CreateUserRequest) (_ *adminv1.CreateUserResponse, err error) {
+	raw, x, err := a.authorize(ctx, r.GetEnvelope())
 	if err != nil {
 		return nil, err
 	}
+	defer func() { a.finish(ctx, x, err) }()
 	var p adminv1.CreateUserParams
 	if err := parse(raw, &p); err != nil {
 		return nil, err
@@ -257,11 +291,12 @@ func (a *Admin) ListUsers(ctx context.Context, r *adminv1.ListUsersRequest) (*ad
 }
 
 // DisableUser implements AdminService.
-func (a *Admin) DisableUser(ctx context.Context, r *adminv1.DisableUserRequest) (*adminv1.DisableUserResponse, error) {
-	raw, _, err := a.authorize(ctx, r.GetEnvelope())
+func (a *Admin) DisableUser(ctx context.Context, r *adminv1.DisableUserRequest) (_ *adminv1.DisableUserResponse, err error) {
+	raw, x, err := a.authorize(ctx, r.GetEnvelope())
 	if err != nil {
 		return nil, err
 	}
+	defer func() { a.finish(ctx, x, err) }()
 	var p adminv1.DisableUserParams
 	if err := parse(raw, &p); err != nil {
 		return nil, err
@@ -277,11 +312,12 @@ func identityPB(i store.Identity) *adminv1.Identity {
 }
 
 // BindIdentity implements AdminService.
-func (a *Admin) BindIdentity(ctx context.Context, r *adminv1.BindIdentityRequest) (*adminv1.BindIdentityResponse, error) {
-	raw, _, err := a.authorize(ctx, r.GetEnvelope())
+func (a *Admin) BindIdentity(ctx context.Context, r *adminv1.BindIdentityRequest) (_ *adminv1.BindIdentityResponse, err error) {
+	raw, x, err := a.authorize(ctx, r.GetEnvelope())
 	if err != nil {
 		return nil, err
 	}
+	defer func() { a.finish(ctx, x, err) }()
 	var p adminv1.BindIdentityParams
 	if err := parse(raw, &p); err != nil {
 		return nil, err
@@ -310,11 +346,12 @@ func (a *Admin) ListIdentities(ctx context.Context, r *adminv1.ListIdentitiesReq
 }
 
 // UnbindIdentity implements AdminService.
-func (a *Admin) UnbindIdentity(ctx context.Context, r *adminv1.UnbindIdentityRequest) (*adminv1.UnbindIdentityResponse, error) {
-	raw, _, err := a.authorize(ctx, r.GetEnvelope())
+func (a *Admin) UnbindIdentity(ctx context.Context, r *adminv1.UnbindIdentityRequest) (_ *adminv1.UnbindIdentityResponse, err error) {
+	raw, x, err := a.authorize(ctx, r.GetEnvelope())
 	if err != nil {
 		return nil, err
 	}
+	defer func() { a.finish(ctx, x, err) }()
 	var p adminv1.UnbindIdentityParams
 	if err := parse(raw, &p); err != nil {
 		return nil, err

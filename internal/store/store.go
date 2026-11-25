@@ -465,11 +465,52 @@ func (s *Store) UnbindIdentity(ctx context.Context, issuer, subject string) erro
 
 // ---- audit ----
 
-// Audit records an accepted administrative act.
-func (s *Store) Audit(ctx context.Context, credentialID []byte, method string, requestSHA256 []byte) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_audit(at, credential_id, method, request_sha256) VALUES (?,?,?,?)`,
-		s.now().Unix(), credentialID, method, requestSHA256)
+// Audit outcomes. An act leaves an attempt row when it is authorized and a
+// success or failure row once it has run.
+const (
+	OutcomeAttempt = "attempt"
+	OutcomeSuccess = "success"
+	OutcomeFailure = "failure"
+)
+
+// Audit records a step of an administrative act.
+func (s *Store) Audit(ctx context.Context, credentialID []byte, method string, requestSHA256 []byte, outcome string) error {
+	switch outcome {
+	case OutcomeAttempt, OutcomeSuccess, OutcomeFailure:
+	default:
+		return fmt.Errorf("%w: audit outcome %q", ErrInvalid, outcome)
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO admin_audit(at, credential_id, method, request_sha256, outcome) VALUES (?,?,?,?,?)`,
+		s.now().Unix(), credentialID, method, requestSHA256, outcome)
 	return err
+}
+
+// AuditRow is one row of the audit trail.
+type AuditRow struct {
+	At           time.Time
+	CredentialID []byte
+	Method       string
+	Outcome      string
+}
+
+// AuditRows returns the audit trail, oldest first.
+func (s *Store) AuditRows(ctx context.Context) ([]AuditRow, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT at, credential_id, method, outcome FROM admin_audit ORDER BY id LIMIT ?`, MaxList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditRow
+	for rows.Next() {
+		var r AuditRow
+		var at int64
+		if err := rows.Scan(&at, &r.CredentialID, &r.Method, &r.Outcome); err != nil {
+			return nil, err
+		}
+		r.At = time.Unix(at, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // AuditCount is the number of audit rows (for tests and status).

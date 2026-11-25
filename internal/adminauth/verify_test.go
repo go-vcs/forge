@@ -298,25 +298,27 @@ func TestNonceBounds(t *testing.T) {
 func TestSessions(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	s := adminauth.NewSessions(func() time.Time { return now }, time.Minute, 2, 4)
-	tok, _, err := s.Open(exporterA)
+	check := func(tok, exp []byte) error { _, err := s.Check(tok, exp); return err }
+	tok, _, err := s.Open(exporterA, []byte("cred-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Check(tok, exporterA); err != nil {
+	owner, err := s.Check(tok, exporterA)
+	if err != nil || string(owner) != "cred-1" {
+		t.Fatalf("Check = %q, %v; the session must name the credential that opened it", owner, err)
+	}
+	if err := check(tok, exporterA); err != nil { // not single-use
 		t.Fatal(err)
 	}
-	if err := s.Check(tok, exporterA); err != nil { // not single-use
+	wantErr(t, check(tok, exporterB), adminauth.ErrSessionOtherConn)
+	wantErr(t, check(make([]byte, 32), exporterA), adminauth.ErrSessionInvalid)
+	wantErr(t, check(tok[:5], exporterA), adminauth.ErrSessionInvalid)
+	if _, _, err := s.Open(exporterA, nil); err != nil {
 		t.Fatal(err)
 	}
-	wantErr(t, s.Check(tok, exporterB), adminauth.ErrSessionOtherConn)
-	wantErr(t, s.Check(make([]byte, 32), exporterA), adminauth.ErrSessionInvalid)
-	wantErr(t, s.Check(tok[:5], exporterA), adminauth.ErrSessionInvalid)
-	if _, _, err := s.Open(exporterA); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := s.Open(exporterA); !errors.Is(err, adminauth.ErrTooManySessions) {
+	if _, _, err := s.Open(exporterA, nil); !errors.Is(err, adminauth.ErrTooManySessions) {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	wantErr(t, s.Check(tok, exporterA), adminauth.ErrSessionInvalid)
+	wantErr(t, check(tok, exporterA), adminauth.ErrSessionInvalid)
 }

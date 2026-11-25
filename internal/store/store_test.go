@@ -339,11 +339,29 @@ func TestAudit(t *testing.T) {
 	if n, _ := s.AuditCount(ctx); n != 0 {
 		t.Fatal(n)
 	}
-	if err := s.Audit(ctx, []byte("c"), "/m", make([]byte, 32)); err != nil {
-		t.Fatal(err)
+	for _, o := range []string{store.OutcomeAttempt, store.OutcomeSuccess, store.OutcomeFailure} {
+		if err := s.Audit(ctx, []byte("c"), "/m", make([]byte, 32), o); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if n, err := s.AuditCount(ctx); err != nil || n != 1 {
+	if n, err := s.AuditCount(ctx); err != nil || n != 3 {
 		t.Fatalf("%d %v", n, err)
+	}
+	rows, err := s.AuditRows(ctx)
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("%v %v", rows, err)
+	}
+	for i, want := range []string{"attempt", "success", "failure"} {
+		r := rows[i]
+		if r.Outcome != want || r.Method != "/m" || string(r.CredentialID) != "c" || !r.At.Equal(epoch) {
+			t.Fatalf("row %d = %+v, want outcome %q", i, r, want)
+		}
+	}
+	if err := s.Audit(ctx, []byte("c"), "/m", make([]byte, 32), "done"); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("an unknown outcome was recorded: %v", err)
+	}
+	if n, _ := s.AuditCount(ctx); n != 3 {
+		t.Fatalf("a refused outcome left a row: %d", n)
 	}
 }
 
