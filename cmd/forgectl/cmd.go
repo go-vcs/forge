@@ -19,6 +19,13 @@ import (
 // openSigner opens the hardware key. Tests replace it.
 var openSigner = platformSigner
 
+// dial and dialUnix are variables so that a test can make a dial fail, which
+// grpc.NewClient does only for a target it cannot parse.
+var (
+	dial     = adminclient.Dial
+	dialUnix = adminclient.DialUnix
+)
+
 type options struct {
 	server, caFile, serverName, rpID, credentialID, socket string
 }
@@ -87,7 +94,7 @@ func (o *options) client(ctx context.Context) (*adminclient.Client, func(), erro
 	if err != nil {
 		return nil, nil, err
 	}
-	conn, err := adminclient.Dial(o.server, cfg)
+	conn, err := dial(o.server, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -149,7 +156,7 @@ host, as the user that owns the socket directory.`,
 			if err != nil {
 				return err
 			}
-			conn, err := adminclient.DialUnix(o.socket)
+			conn, err := dialUnix(o.socket)
 			if err != nil {
 				return err
 			}
