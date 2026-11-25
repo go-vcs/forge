@@ -54,6 +54,10 @@ func New(conn *grpc.ClientConn, s Signer, rpID string, credentialID []byte) *Cli
 	return &Client{Conn: conn, Admin: adminv1.NewAdminServiceClient(conn), Signer: s, RPID: rpID, CredentialID: credentialID}
 }
 
+// exportKeyingMaterial is a variable so that a test can make the export fail,
+// which a completed TLS 1.3 handshake never does.
+var exportKeyingMaterial = (*tls.ConnectionState).ExportKeyingMaterial
+
 // Nonce asks for a nonce and returns it with the connection's exporter value.
 func (c *Client) Nonce(ctx context.Context) (nonce, exporter []byte, err error) {
 	var p peer.Peer
@@ -65,7 +69,7 @@ func (c *Client) Nonce(ctx context.Context) (nonce, exporter []byte, err error) 
 	if !ok || ti.State.Version != tls.VersionTLS13 {
 		return nil, nil, errors.New("adminclient: connection is not TLS 1.3")
 	}
-	exp, err := ti.State.ExportKeyingMaterial(adminauth.ExporterLabel, nil, adminauth.ExporterLen)
+	exp, err := exportKeyingMaterial(&ti.State, adminauth.ExporterLabel, nil, adminauth.ExporterLen)
 	if err != nil {
 		return nil, nil, err
 	}
