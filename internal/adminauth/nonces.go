@@ -64,9 +64,7 @@ func (t *table) issue(exporter []byte, errTooMany error) ([]byte, time.Time, err
 		return nil, time.Time{}, errTooMany
 	}
 	var k [NonceLen]byte
-	if _, err := rand.Read(k[:]); err != nil {
-		return nil, time.Time{}, err
-	}
+	rand.Read(k[:]) // never fails: crypto/rand.Read aborts the program instead
 	exp := now.Add(t.ttl)
 	t.m[k] = record{exporter: append([]byte(nil), exporter...), expires: exp}
 	return k[:], exp, nil
