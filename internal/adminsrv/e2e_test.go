@@ -834,14 +834,27 @@ func TestListenUnixRefusals(t *testing.T) {
 		if err := os.Chmod(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := adminsrv.ListenUnix(filepath.Join(d, "s")); err == nil {
+		l, err := adminsrv.ListenUnix(filepath.Join(d, "s"))
+		if err == nil {
+			l.Close()
 			t.Fatal("0755 directory accepted")
+		}
+		if !strings.Contains(err.Error(), "0700") {
+			t.Fatalf("%v", err)
 		}
 		if err := os.Chmod(d, 0o750); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := adminsrv.ListenUnix(filepath.Join(d, "s")); err == nil {
+		if l, err := adminsrv.ListenUnix(filepath.Join(d, "s")); err == nil {
+			l.Close()
 			t.Fatal("0750 directory accepted")
+		}
+		if err := os.Chmod(d, 0o705); err != nil {
+			t.Fatal(err)
+		}
+		if l, err := adminsrv.ListenUnix(filepath.Join(d, "s")); err == nil {
+			l.Close()
+			t.Fatal("0705 directory accepted")
 		}
 	})
 	t.Run("missing directory", func(t *testing.T) {

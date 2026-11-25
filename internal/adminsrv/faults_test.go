@@ -218,6 +218,9 @@ func TestReadsRefuseABogusSession(t *testing.T) {
 	c := f.dial()
 	_, err := c.Admin.ListUsers(t.Context(), &adminv1.ListUsersRequest{SessionToken: []byte("bogus")})
 	wantStatus(t, "bogus token", err, codes.Unauthenticated, "session refused: ")
+	if strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("a token that never existed was reported as a revoked credential: %v", err)
+	}
 }
 
 func TestStoreFailuresAreInternalNotLeaked(t *testing.T) {
