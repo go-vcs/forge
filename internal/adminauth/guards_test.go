@@ -49,6 +49,25 @@ func TestACounterStoreFailureRefusesTheCall(t *testing.T) {
 	}
 }
 
+// revokedCreds reports a revoked credential yet still hands back its key, so a
+// verifier that ignored the error would go on and accept a valid signature.
+type revokedCreds struct{ *fakeCreds }
+
+func (r revokedCreds) ActiveCredential(ctx context.Context, id []byte) (adminauth.Credential, error) {
+	c, _ := r.fakeCreds.ActiveCredential(ctx, id)
+	return c, adminauth.ErrUnknownCredential
+}
+
+func TestARevokedCredentialIsRefusedEvenWithAValidSignature(t *testing.T) {
+	e := newEnv(t)
+	e.v.Credentials = revokedCreds{e.creds}
+	cred, err := e.v.Verify(context.Background(), e.good(t))
+	wantErr(t, err, adminauth.ErrUnknownCredential)
+	if cred.ID != nil {
+		t.Fatal("a credential came back with the error")
+	}
+}
+
 func TestANonceLongerThanIssuedIsNotItsPrefix(t *testing.T) {
 	// A token longer than NonceLen must not be truncated into a valid one.
 	e := newEnv(t)
