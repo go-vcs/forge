@@ -85,12 +85,8 @@ func (e *Enrol) BeginEnrol(ctx context.Context, _ *adminv1.BeginEnrolRequest) (*
 	}
 	var ch [adminauth.NonceLen]byte
 	var uh [16]byte
-	if _, err := rand.Read(ch[:]); err != nil {
-		return nil, status.Error(codes.Internal, "randomness")
-	}
-	if _, err := rand.Read(uh[:]); err != nil {
-		return nil, status.Error(codes.Internal, "randomness")
-	}
+	rand.Read(ch[:]) // crypto/rand.Read never returns an error (it aborts the program instead)
+	rand.Read(uh[:])
 	exp := now.Add(ChallengeTTL)
 	e.challenges[ch] = exp
 	return &adminv1.BeginEnrolResponse{RpId: e.RPID, UserHandle: uh[:], Challenge: ch[:], ExpiresAt: timestamppb.New(exp)}, nil

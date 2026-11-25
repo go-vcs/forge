@@ -11,7 +11,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"log/slog"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -40,8 +39,11 @@ type Admin struct {
 	Nonces   *adminauth.Nonces
 	Sessions *adminauth.Sessions
 	Log      *slog.Logger
-	Now      func() time.Time
 }
+
+// exportKeyingMaterial is a variable so that a test can make the export fail,
+// which a completed TLS 1.3 handshake never does.
+var exportKeyingMaterial = (*tls.ConnectionState).ExportKeyingMaterial
 
 // Exporter returns the RFC 9266 channel-binding value of the connection the
 // call arrived on, and refuses anything that is not TLS 1.3.
@@ -54,18 +56,11 @@ func Exporter(ctx context.Context) ([]byte, error) {
 	if !ok || ti.State.Version != tls.VersionTLS13 {
 		return nil, status.Error(codes.Unauthenticated, "TLS 1.3 required")
 	}
-	b, err := ti.State.ExportKeyingMaterial(adminauth.ExporterLabel, nil, adminauth.ExporterLen)
+	b, err := exportKeyingMaterial(&ti.State, adminauth.ExporterLabel, nil, adminauth.ExporterLen)
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "no channel binding")
 	}
 	return b, nil
-}
-
-func (a *Admin) now() time.Time {
-	if a.Now != nil {
-		return a.Now()
-	}
-	return time.Now()
 }
 
 func (a *Admin) logf(msg string, args ...any) {
@@ -76,9 +71,10 @@ func (a *Admin) logf(msg string, args ...any) {
 
 // act is an authorized administrative call, whose outcome is audited.
 type act struct {
-	cred   adminauth.Credential
-	method string
-	sum    [32]byte
+	cred     adminauth.Credential
+	method   string
+	sum      [32]byte
+	exporter []byte // the channel binding the assertion was verified against
 }
 
 // finish records how an authorized call ended, from the error it is about to
@@ -121,7 +117,7 @@ func (a *Admin) authorize(ctx context.Context, env *adminv1.Envelope) ([]byte, *
 		a.logf("assertion refused", "method", method, "reason", err.Error())
 		return nil, nil, status.Error(codes.Unauthenticated, "assertion refused: "+err.Error())
 	}
-	x := &act{cred: cred, method: method, sum: sha256.Sum256(env.Request)}
+	x := &act{cred: cred, method: method, sum: sha256.Sum256(env.Request), exporter: exp}
 	if err := a.Store.Audit(ctx, cred.ID, method, x.sum[:], store.OutcomeAttempt); err != nil {
 		return nil, nil, status.Error(codes.Internal, "audit")
 	}
@@ -193,11 +189,7 @@ func (a *Admin) OpenSession(ctx context.Context, r *adminv1.OpenSessionRequest) 
 	if err := parse(raw, &adminv1.OpenSessionParams{}); err != nil {
 		return nil, err
 	}
-	exp, err := Exporter(ctx)
-	if err != nil {
-		return nil, err
-	}
-	tok, until, err := a.Sessions.Open(exp, x.cred.ID)
+	tok, until, err := a.Sessions.Open(x.exporter, x.cred.ID)
 	if err != nil {
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
 	}

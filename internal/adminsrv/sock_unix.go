@@ -28,7 +28,7 @@ func ListenUnix(path string) (net.Listener, error) {
 	if !fi.IsDir() || fi.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("adminsrv: socket directory %s must be a directory with mode 0700 (is %v)", dir, fi.Mode())
 	}
-	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Geteuid() {
+	if !ownedBy(fi, geteuid()) {
 		return nil, fmt.Errorf("adminsrv: socket directory %s is not owned by this user", dir)
 	}
 	if li, err := os.Lstat(path); err == nil {
@@ -43,11 +43,25 @@ func ListenUnix(path string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := chmod(path, 0o600); err != nil {
 		l.Close()
 		return nil, err
 	}
 	return l, nil
+}
+
+// chmod and geteuid are variables so that a test can make the step after
+// Listen fail and can pose as another user.
+var (
+	chmod   = os.Chmod
+	geteuid = os.Geteuid
+)
+
+// ownedBy says whether fi is owned by uid. A file whose owner cannot be read
+// is not owned by anyone.
+func ownedBy(fi fs.FileInfo, uid int) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == uid
 }
 
 func checkSecretFile(path string) error {

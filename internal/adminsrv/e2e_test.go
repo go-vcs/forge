@@ -14,11 +14,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +51,27 @@ type forge struct {
 	roots *x509.CertPool
 	auth  *fidotest.Authenticator
 	enrol *adminsrv.Enrol
+	db    string // the store's database file
+	adm   *adminsrv.Admin
+	logs  *logBuf
+}
+
+// logBuf is a log sink that handlers on other goroutines may write.
+type logBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *logBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *logBuf) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 func selfSigned(t *testing.T) (tls.Certificate, *x509.CertPool) {
@@ -87,7 +110,8 @@ func shortDir(t *testing.T) string {
 
 func newForge(t *testing.T, allowed ...[16]byte) *forge {
 	t.Helper()
-	st, err := store.Open(t.Context(), ":memory:", nil)
+	db := filepath.Join(shortDir(t), "forge.db") // a file, so a test can damage it
+	st, err := store.Open(t.Context(), db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +124,9 @@ func newForge(t *testing.T, allowed ...[16]byte) *forge {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &forge{t: t, st: st, auth: a}
-	f.enrol = &adminsrv.Enrol{Store: st, Policy: pol, RPID: rpID}
+	f := &forge{t: t, st: st, auth: a, db: db, logs: &logBuf{}}
+	lg := slog.New(slog.NewTextHandler(f.logs, nil))
+	f.enrol = &adminsrv.Enrol{Store: st, Policy: pol, RPID: rpID, Log: lg}
 
 	// Enrolment server on a Unix socket.
 	f.sock = filepath.Join(shortDir(t), "e.sock")
@@ -121,7 +146,9 @@ func newForge(t *testing.T, allowed ...[16]byte) *forge {
 		Verifier: &adminauth.Verifier{RPID: rpID, Credentials: st, Nonces: nil},
 		Nonces:   adminauth.NewNonces(time.Now, time.Minute, 64, 256),
 		Sessions: adminauth.NewSessions(time.Now, time.Minute, 8, 64),
+		Log:      lg,
 	}
+	f.adm = adm
 	adm.Verifier.Nonces = adm.Nonces
 	srv, err := adminsrv.NewAdminServer(adminsrv.TLSConfig(cert), adm)
 	if err != nil {
@@ -185,6 +212,7 @@ type tweak struct {
 	nonceFrom    *adminclient.Client // connection the nonce is taken from
 	exporterFrom *adminclient.Client // connection whose exporter is signed
 	credID       []byte
+	rawReq       []byte // signed in place of the marshalled params
 	mutate       func(*adminv1.Envelope)
 }
 
@@ -207,9 +235,12 @@ func (f *forge) envelope(c *adminclient.Client, method string, params proto.Mess
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	req, err := proto.Marshal(params)
-	if err != nil {
-		f.t.Fatal(err)
+	req := tw.rawReq
+	if req == nil {
+		var err error
+		if req, err = proto.Marshal(params); err != nil {
+			f.t.Fatal(err)
+		}
 	}
 	m := method
 	if tw.signedMethod != "" {
