@@ -42,6 +42,15 @@ func FuzzAttestationVerify(f *testing.F) {
 	f.Add(ad[:37], st)
 	f.Add(ad, []byte{0xa0})
 	f.Add([]byte{}, []byte{})
+	// Leaves whose AAGUID extension is absent or the wrong size: seeds for the
+	// extension rules in checkLeaf.
+	for _, v := range [][]byte{nil, {0x04, 0x00}, {0x04, 0x01, 0x00}, {0xff}} {
+		b := fidotest.New(fidotest.YubiKeyBioAAGUID)
+		b.LeafNoExt, b.LeafExtValue = v == nil, v
+		b.Reissue()
+		_, bad, bst, _ := b.Make(f.Context(), rp, nil, "x", cdh)
+		f.Add(bad, bst)
+	}
 	f.Fuzz(func(t *testing.T, authData, stmt []byte) {
 		r, err := p.Verify("packed", authData, stmt, cdh)
 		if err != nil {
