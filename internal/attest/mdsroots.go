@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-authn/fido/mds"
 )
@@ -26,13 +27,33 @@ var badStatus = map[string]bool{
 	"USER_KEY_PHYSICAL_COMPROMISE": true,
 }
 
-// MDSRoots serves attestation roots from a verified MDS3 blob.
-type MDSRoots struct{ Blob *mds.Blob }
+// ErrStaleMetadata is returned when the blob's nextUpdate has passed. The blob
+// was current when it was verified; what the metadata service has said since
+// (a revocation, a compromise) is not in it.
+var ErrStaleMetadata = errors.New("the FIDO metadata blob is past its nextUpdate")
+
+// MDSRoots serves attestation roots from a verified MDS3 blob, for as long as
+// that blob is current.
+type MDSRoots struct {
+	// Blob is the result of mds.Verify. A Blob built any other way has no
+	// nextUpdate instant and serves nothing.
+	Blob *mds.Blob
+	// Now is the clock; nil means time.Now.
+	Now func() time.Time
+}
 
 // Roots implements [Roots].
 func (m MDSRoots) Roots(aaguid string) ([]*x509.Certificate, error) {
 	if m.Blob == nil {
 		return nil, fmt.Errorf("%w: no blob loaded", ErrUnknownModel)
+	}
+	now := time.Now
+	if m.Now != nil {
+		now = m.Now
+	}
+	// Checked on every lookup, not once: the process outlives the blob.
+	if next := m.Blob.NextUpdate(); !now().Before(next) {
+		return nil, fmt.Errorf("%w: %s", ErrStaleMetadata, next.Format(time.DateOnly))
 	}
 	e := m.Blob.Lookup(aaguid)
 	if e == nil {
