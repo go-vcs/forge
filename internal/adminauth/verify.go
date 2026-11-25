@@ -26,6 +26,24 @@ var (
 	ErrCounterRegression = errors.New("signature counter went backwards")
 )
 
+// IsRefusal reports whether err is one of this package's refusals: a verdict
+// on what the caller sent, whose reason the caller may be told. Any other error
+// Verify returns is a failure of the server's own storage; it says nothing
+// about the assertion and its text is not for the peer, who at that point has
+// proved nothing.
+func IsRefusal(err error) bool {
+	for _, r := range []error{
+		ErrNonceUnknown, ErrNonceExpired, ErrNonceOtherConnection,
+		ErrUnknownCredential, ErrMalformed, ErrRPIDMismatch, ErrNotPresent,
+		ErrNotVerified, ErrBadSignature, ErrCounterRegression,
+	} {
+		if errors.Is(err, r) {
+			return true
+		}
+	}
+	return false
+}
+
 // Size bounds on what an assertion may carry; larger input is refused before
 // any cryptography.
 const (

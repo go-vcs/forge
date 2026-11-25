@@ -33,7 +33,10 @@ A mutating call carries an `Envelope`: `nonce`, `request` (the serialized
    party id; UP and UV are set; the signature verifies; the signature counter
    did not go backwards (when either side is non-zero).
 
-Each refusal is `Unauthenticated`, with a reason, and changes nothing.
+Each refusal is `Unauthenticated`, with a reason, and changes nothing. A failure
+of the server's own storage during these checks is not a refusal: it is
+`Internal`, without detail (the cause is in the server log), since the caller
+has not been authenticated yet.
 
 ## Sessions
 

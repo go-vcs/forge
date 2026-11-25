@@ -49,6 +49,33 @@ func TestACounterStoreFailureRefusesTheCall(t *testing.T) {
 	}
 }
 
+func TestOnlyThisPackagesVerdictsAreRefusals(t *testing.T) {
+	for _, err := range []error{
+		adminauth.ErrNonceUnknown, adminauth.ErrNonceExpired, adminauth.ErrNonceOtherConnection,
+		adminauth.ErrUnknownCredential, adminauth.ErrMalformed, adminauth.ErrRPIDMismatch,
+		adminauth.ErrNotPresent, adminauth.ErrNotVerified, adminauth.ErrBadSignature,
+		adminauth.ErrCounterRegression,
+	} {
+		if !adminauth.IsRefusal(err) || !adminauth.IsRefusal(errors.Join(errors.New("context"), err)) {
+			t.Fatalf("%v is not a refusal", err)
+		}
+	}
+	// What a store says when it breaks is not a verdict on the assertion, and
+	// neither are the limits of the tables, which Verify never returns.
+	for _, err := range []error{nil, errors.New("disk full"), context.Canceled, adminauth.ErrTooManyNonces, adminauth.ErrSessionInvalid} {
+		if adminauth.IsRefusal(err) {
+			t.Fatalf("%v is a refusal", err)
+		}
+	}
+	// The store's error of TestACounterStoreFailureRefusesTheCall, as Verify
+	// hands it back.
+	e := newEnv(t)
+	e.v.Credentials = &lenientCreds{fakeCreds: e.creds, advance: func(uint32) error { return errors.New("disk full") }}
+	if _, err := e.v.Verify(context.Background(), e.good(t)); err == nil || adminauth.IsRefusal(err) {
+		t.Fatalf("a store failure reads as a refusal: %v", err)
+	}
+}
+
 // revokedCreds reports a revoked credential yet still hands back its key, so a
 // verifier that ignored the error would go on and accept a valid signature.
 type revokedCreds struct{ *fakeCreds }
