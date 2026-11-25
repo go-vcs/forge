@@ -7,8 +7,12 @@
 package adminsrv_test
 
 import (
+	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -27,26 +31,33 @@ func secretFixture(t *testing.T) (certFile, keyFile string) {
 	return certFile, keyFile
 }
 
+// loadSays fails unless LoadTLS refuses with an error that says want: a guard
+// is held by the reason it gives, not by the fact that something failed.
+func loadSays(t *testing.T, name, certFile, keyFile, want string) {
+	t.Helper()
+	_, err := adminsrv.LoadTLS(certFile, keyFile)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("%s: got %v, want a refusal saying %q", name, err, want)
+	}
+}
+
 func TestLoadTLSRefusesAKeyOwnedBySomeoneElse(t *testing.T) {
 	certFile, keyFile := secretFixture(t)
 	if _, err := adminsrv.LoadTLS(certFile, keyFile); err != nil {
 		t.Fatal(err)
 	}
 	defer adminsrv.UseEuid(os.Geteuid() + 1)()
-	if _, err := adminsrv.LoadTLS(certFile, keyFile); err == nil {
-		t.Fatal("a key owned by another user was loaded")
-	}
+	loadSays(t, "other owner", certFile, keyFile, "not owned by this user")
 }
 
-func TestLoadTLSRefusesASymlinkedKey(t *testing.T) {
+func TestLoadTLSRefusesASymlinkedOrMissingKey(t *testing.T) {
 	certFile, keyFile := secretFixture(t)
 	link := filepath.Join(filepath.Dir(keyFile), "link.pem")
 	if err := os.Symlink(keyFile, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adminsrv.LoadTLS(certFile, link); err == nil {
-		t.Fatal("a symlink to a valid key was loaded")
-	}
+	loadSays(t, "symlink", certFile, link, "symbolic links are refused")
+	loadSays(t, "missing", certFile, filepath.Join(filepath.Dir(keyFile), "none.pem"), "key file")
 }
 
 func TestLoadTLSRefusesANonRegularKey(t *testing.T) {
@@ -55,16 +66,12 @@ func TestLoadTLSRefusesANonRegularKey(t *testing.T) {
 	if err := os.Chmod(d, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adminsrv.LoadTLS(certFile, d); err == nil {
-		t.Fatal("a directory was accepted as a key")
-	}
+	loadSays(t, "directory", certFile, d, "not a regular file")
 	fifo := filepath.Join(d, "fifo")
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adminsrv.LoadTLS(certFile, fifo); err == nil {
-		t.Fatal("a FIFO was accepted as a key")
-	}
+	loadSays(t, "FIFO", certFile, fifo, "not a regular file")
 }
 
 func TestLoadTLSRefusesAnOversizedKey(t *testing.T) {
@@ -73,7 +80,19 @@ func TestLoadTLSRefusesAnOversizedKey(t *testing.T) {
 	if err := os.WriteFile(big, make([]byte, 1<<20+1), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adminsrv.LoadTLS(certFile, big); err == nil {
-		t.Fatal("an oversized key file was read")
+	loadSays(t, "oversized", certFile, big, "larger than")
+}
+
+func TestLoadTLSReportsAFailedRead(t *testing.T) {
+	certFile, keyFile := secretFixture(t)
+	defer adminsrv.UseReadAll(func(io.Reader) ([]byte, error) { return nil, errors.New("injected read failure") })()
+	loadSays(t, "read", certFile, keyFile, "injected read failure")
+}
+
+func TestLoadTLSReportsAMissingCertificate(t *testing.T) {
+	certFile, keyFile := secretFixture(t)
+	_, err := adminsrv.LoadTLS(certFile+".none", keyFile)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("got %v, want the missing certificate reported", err)
 	}
 }

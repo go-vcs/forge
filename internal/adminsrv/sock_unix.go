@@ -56,6 +56,7 @@ func ListenUnix(path string) (net.Listener, error) {
 var (
 	chmod   = os.Chmod
 	geteuid = os.Geteuid
+	readAll = io.ReadAll
 )
 
 // ownedBy says whether fi is owned by uid. A file whose owner cannot be read
@@ -91,7 +92,7 @@ func readSecretFile(path string) ([]byte, error) {
 	if fi.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("adminsrv: key file %s is accessible to group or others (mode %v); use 0600", path, fi.Mode().Perm())
 	}
-	b, err := io.ReadAll(io.LimitReader(f, maxSecretLen+1))
+	b, err := readAll(io.LimitReader(f, maxSecretLen+1))
 	if err != nil {
 		return nil, err
 	}
