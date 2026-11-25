@@ -60,8 +60,8 @@ func NewEnrolServer(e *Enrol) *grpc.Server {
 }
 
 // LoadTLS reads a certificate and key from files. The key file must not be
-// accessible to group or others (unless it comes from a systemd credential
-// directory, where the manager guarantees that).
+// accessible to group or others. A systemd credential file (mode 0400) passes
+// this check like any other private file; there is no exemption.
 func LoadTLS(certFile, keyFile string) (tls.Certificate, error) {
 	if err := checkSecretFile(keyFile); err != nil {
 		return tls.Certificate{}, err

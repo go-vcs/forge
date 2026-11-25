@@ -1,6 +1,7 @@
 # go-vcs design
 
-Status: draft, 2026-11-25. Nothing described here is implemented yet.
+Status: draft, 2026-11-25. Milestone 2a (admin gRPC API and CLI, see
+[admin-api.md](admin-api.md)) is implemented; the rest is not.
 
 ## Why
 
