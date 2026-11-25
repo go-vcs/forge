@@ -1,5 +1,12 @@
 # forge
 
+<img src="https://raw.githubusercontent.com/go-vcs/brand/main/avatar/go-vcs-forge.png" width="96" alt="go-vcs forge" align="right">
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/go-vcs/forge.svg)](https://pkg.go.dev/github.com/go-vcs/forge)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![CI](https://github.com/go-vcs/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/go-vcs/forge/actions/workflows/ci.yml)
+[![Landing](https://img.shields.io/badge/landing-go--vcs.github.io-0079A8.svg)](https://go-vcs.github.io) [![Docs](https://img.shields.io/badge/docs-go--vcs.github.io%2Fdocs-0079A8.svg)](https://go-vcs.github.io/docs/main/)
+
 Light, secure Git forge: hosting, web UI, admin gRPC, Actions runners via GARM.
 
 Status: milestone 2a. The admin gRPC API and its CLI are implemented; hosting,
