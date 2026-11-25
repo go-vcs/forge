@@ -14,6 +14,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
+	"io"
 	"log/slog"
 	"math/big"
 	"net"
@@ -21,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -144,7 +147,7 @@ func newForge(t *testing.T, allowed ...[16]byte) *forge {
 	adm := &adminsrv.Admin{
 		Store:    st,
 		Verifier: &adminauth.Verifier{RPID: rpID, Credentials: st, Nonces: nil},
-		Nonces:   adminauth.NewNonces(time.Now, time.Minute, 64, 256),
+		Nonces:   adminauth.NewNonces(time.Now, time.Minute, 256),
 		Sessions: adminauth.NewSessions(time.Now, time.Minute, 8, 64),
 		Log:      lg,
 	}
@@ -331,7 +334,11 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("audit rows %d", n)
 	}
 
-	// Revoking the only credential ends the key's authority.
+	// Revoking a credential ends the key's authority (a spare one keeps the
+	// forge administrable: the last credential cannot be revoked).
+	if _, err := f.st.AddCredential(ctx, []byte("spare"), &f.auth.Key.PublicKey, "a", "spare"); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.RevokeCredential(ctx, cred.CredentialId); err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +413,7 @@ func TestRefusals(t *testing.T) {
 		"altered request bytes":                        "signature does not verify",
 		"trailing byte in request":                     "signature does not verify",
 		"other connection's exporter":                  "signature does not verify",
-		"nonce issued to another connection":           "another connection",
+		"nonce issued to another connection":           "nonce unknown",
 		"unknown nonce":                                "nonce unknown",
 		"missing nonce":                                "nonce unknown",
 		"UV unset":                                     "user verification flag",
@@ -478,7 +485,7 @@ func TestReplayOnAnotherConnection(t *testing.T) {
 	f.wantUsers(0)
 }
 
-func TestRefusedAssertionBurnsTheNonce(t *testing.T) {
+func TestRefusedAssertionKeepsTheNonceUsableByTheSigner(t *testing.T) {
 	f := newForge(t)
 	f.mustEnrol()
 	c := f.dial()
@@ -489,8 +496,12 @@ func TestRefusedAssertionBurnsTheNonce(t *testing.T) {
 	if err := createUser(c, bad); code(err) != codes.Unauthenticated {
 		t.Fatalf("bad: %v", err)
 	}
+	// Nothing is stored at issue time, so a refused call has nothing to burn.
+	if err := createUser(c, good); err != nil {
+		t.Fatalf("the right assertion after a refused one: %v", err)
+	}
 	if err := createUser(c, good); code(err) != codes.Unauthenticated {
-		t.Fatalf("the nonce of a refused call must be spent: %v", err)
+		t.Fatalf("the accepted nonce must be spent: %v", err)
 	}
 }
 
@@ -558,19 +569,130 @@ func TestSessionOpenNeedsAnAssertion(t *testing.T) {
 	}
 }
 
-func TestNoncesAreBounded(t *testing.T) {
+// The reproduction of the review finding: 16 connections asking for many nonces
+// used to fill the table and lock every administrator out.
+func TestNonceFloodDoesNotStopAnAdmin(t *testing.T) {
+	f := newForge(t)
+	f.mustEnrol()
+	for range 16 {
+		c := f.dial()
+		for range 200 {
+			if _, err := c.Admin.GetNonce(t.Context(), &adminv1.GetNonceRequest{}); err != nil {
+				t.Fatalf("a nonce was refused: %v", err)
+			}
+		}
+	}
+	c := f.dial()
+	if err := createUser(c, f.envelope(c, createMethod, params("legit"), tweak{})); err != nil {
+		t.Fatalf("a legitimate call after the flood: %v", err)
+	}
+	f.wantUsers(1)
+}
+
+func TestForgedNonceIsRefused(t *testing.T) {
 	f := newForge(t)
 	f.mustEnrol()
 	c := f.dial()
-	var last error
-	for range 100 {
-		if _, err := c.Admin.GetNonce(t.Context(), &adminv1.GetNonceRequest{}); err != nil {
-			last = err
-			break
-		}
+	good := f.envelope(c, createMethod, params("x"), tweak{})
+	forged := proto.Clone(good).(*adminv1.Envelope)
+	forged.Nonce = append([]byte(nil), good.Nonce...)
+	forged.Nonce[len(forged.Nonce)-1] ^= 1
+	if err := createUser(c, forged); code(err) != codes.Unauthenticated {
+		t.Fatalf("forged nonce: %v", err)
 	}
-	if code(last) != codes.ResourceExhausted {
-		t.Fatalf("nonce flood was not stopped: %v", last)
+	f.wantUsers(0)
+}
+
+func TestConnectionCapRefusesAndFrees(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := adminsrv.LimitListener(ln, 3, 2)
+	defer l.Close()
+	accepted := make(chan net.Conn, 8)
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- c
+		}
+	}()
+	dial := func() net.Conn {
+		c, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Close() })
+		return c
+	}
+	// refused reports whether the server closed the connection unserved.
+	refused := func(c net.Conn) bool {
+		c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, err := c.Read(make([]byte, 1))
+		return err == io.EOF || errors.Is(err, syscall.ECONNRESET)
+	}
+	dial()
+	dial()
+	s1 := <-accepted
+	<-accepted
+	if c3 := dial(); !refused(c3) { // per-host cap (2) reached
+		t.Fatal("a third connection from one host was served")
+	}
+	s1.Close() // frees a slot; closing twice must not free two
+	s1.Close()
+	dial()
+	<-accepted
+	if c5 := dial(); !refused(c5) {
+		t.Fatal("per-host cap not restored after one close")
+	}
+}
+
+func TestConnectionTotalCap(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := adminsrv.LimitListener(ln, 1, 100)
+	defer l.Close()
+	go func() {
+		for {
+			if _, err := l.Accept(); err != nil {
+				return
+			}
+		}
+	}()
+	first, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	second.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := second.Read(make([]byte, 1)); err != io.EOF && !errors.Is(err, syscall.ECONNRESET) {
+		t.Fatalf("a connection over the total cap was served: %v", err)
+	}
+}
+
+func TestRevokingTheLastCredentialIsRefused(t *testing.T) {
+	f := newForge(t)
+	cred, err := f.enrolKey("only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := f.dial()
+	err = c.RevokeCredential(t.Context(), cred.CredentialId)
+	if code(err) != codes.FailedPrecondition {
+		t.Fatalf("revoking the only credential: %v", err)
+	}
+	if n, _ := f.st.ActiveCredentialCount(t.Context()); n != 1 {
+		t.Fatalf("%d active credentials after a refused revocation", n)
 	}
 }
 

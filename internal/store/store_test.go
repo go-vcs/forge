@@ -120,6 +120,9 @@ func TestCredentialLifecycle(t *testing.T) {
 	if _, err := s.ActiveCredential(ctx, []byte("nope")); !errors.Is(err, adminauth.ErrUnknownCredential) {
 		t.Fatalf("unknown: %v", err)
 	}
+	if _, err := s.AddCredential(ctx, []byte("id2"), key(t), "a", "second"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := s.RevokeCredential(ctx, []byte("id1")); err != nil {
 		t.Fatal(err)
@@ -133,15 +136,55 @@ func TestCredentialLifecycle(t *testing.T) {
 	if err := s.RevokeCredential(ctx, []byte("zzz")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("revoke unknown: %v", err)
 	}
-	if n, _ := s.ActiveCredentialCount(ctx); n != 0 {
+	if n, _ := s.ActiveCredentialCount(ctx); n != 1 {
 		t.Fatalf("count after revoke %d", n)
 	}
 	list, err := s.ListCredentials(ctx)
-	if err != nil || len(list) != 1 || list[0].RevokedAt.IsZero() || !list[0].RevokedAt.Equal(epoch) {
+	if err != nil || len(list) != 2 || list[0].RevokedAt.IsZero() || !list[0].RevokedAt.Equal(epoch) {
 		t.Fatalf("list: %+v %v", list, err)
 	}
 	if err := s.AdvanceCounter(ctx, []byte("id1"), 5); !errors.Is(err, adminauth.ErrCounterRegression) {
 		t.Fatalf("counter on revoked credential: %v", err)
+	}
+}
+
+func TestTheLastActiveCredentialCannotBeRevoked(t *testing.T) {
+	ctx := t.Context()
+	s := open(t)
+	for _, id := range []string{"a", "b"} {
+		if _, err := s.AddCredential(ctx, []byte(id), key(t), "x", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RevokeCredential(ctx, []byte("a")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeCredential(ctx, []byte("b")); !errors.Is(err, store.ErrLastCredential) {
+		t.Fatalf("revoking the last credential: %v", err)
+	}
+	if n, _ := s.ActiveCredentialCount(ctx); n != 1 {
+		t.Fatalf("count %d: a refused revocation must change nothing", n)
+	}
+	// An unknown or already revoked credential is still NotFound, not "last".
+	if err := s.RevokeCredential(ctx, []byte("a")); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("revoked twice: %v", err)
+	}
+}
+
+func TestAdvanceCounterRefusesAnEqualNonZeroValue(t *testing.T) {
+	ctx := t.Context()
+	s := open(t)
+	if _, err := s.AddCredential(ctx, []byte("c"), key(t), "x", "c"); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		n    uint32
+		fail bool
+	}{{0, false}, {0, false}, {7, false}, {7, true}, {6, true}, {0, true}, {8, false}} {
+		err := s.AdvanceCounter(ctx, []byte("c"), step.n)
+		if step.fail != errors.Is(err, adminauth.ErrCounterRegression) || (!step.fail && err != nil) {
+			t.Fatalf("AdvanceCounter(%d) = %v, want refusal=%v", step.n, err, step.fail)
+		}
 	}
 }
 
@@ -192,7 +235,7 @@ func TestCounter(t *testing.T) {
 	steps := []struct {
 		n  uint32
 		ok bool
-	}{{5, true}, {5, true}, {6, true}, {4, false}, {0, false}, {6, true}, {4294967295, true}, {1, false}}
+	}{{5, true}, {5, false}, {6, true}, {4, false}, {0, false}, {6, false}, {4294967295, true}, {4294967295, false}, {1, false}}
 	for _, st := range steps {
 		err := s.AdvanceCounter(ctx, id, st.n)
 		if st.ok && err != nil {

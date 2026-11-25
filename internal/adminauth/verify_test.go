@@ -37,7 +37,7 @@ func (f *fakeCreds) AdvanceCounter(_ context.Context, id []byte, n uint32) error
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	c := f.c[string(id)]
-	if c.SignCount != 0 && n < c.SignCount {
+	if (c.SignCount != 0 || n != 0) && n <= c.SignCount {
 		return adminauth.ErrCounterRegression
 	}
 	c.SignCount = n
@@ -63,7 +63,7 @@ func newEnv(t testing.TB) *env {
 	creds := &fakeCreds{c: map[string]*adminauth.Credential{
 		string(a.CredID): {ID: a.CredID, PublicKey: &a.Key.PublicKey},
 	}}
-	n := adminauth.NewNonces(func() time.Time { return *clock }, time.Minute, 4, 16)
+	n := adminauth.NewNonces(func() time.Time { return *clock }, time.Minute, 16)
 	return &env{
 		v:    &adminauth.Verifier{RPID: rpID, Credentials: creds, Nonces: n},
 		auth: a, creds: creds, nonces: n, clock: clock,
@@ -80,10 +80,7 @@ const method = "/govcs.forge.admin.v1.AdminService/CreateUser"
 // arrive for (method, request) on exporter.
 func (e *env) call(t testing.TB, exporter []byte, signMethod string, signRequest, signExporter []byte) adminauth.Input {
 	t.Helper()
-	nonce, _, err := e.nonces.Issue(exporter)
-	if err != nil {
-		t.Fatal(err)
-	}
+	nonce, _ := e.nonces.Issue(exporter)
 	cdh := adminauth.ClientDataHash(signMethod, nonce, signRequest, signExporter)
 	ad, sig, err := e.auth.Assert(context.Background(), rpID, e.auth.CredID, cdh)
 	if err != nil {
@@ -139,13 +136,67 @@ func TestRefusesAReplayedNonce(t *testing.T) {
 	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceUnknown)
 }
 
-func TestAFailedAttemptBurnsTheNonce(t *testing.T) {
+// A refused assertion does not spend its nonce: the nonce is stateless, so
+// there is nothing to burn, and it is bound to the connection and expires.
+func TestAFailedAttemptDoesNotSpendTheNonce(t *testing.T) {
 	e := newEnv(t)
 	in := e.good(t)
 	bad := in
 	bad.Request = []byte("other")
 	wantErr(t, mustFail(e.v.Verify(context.Background(), bad)), adminauth.ErrBadSignature)
+	if _, err := e.v.Verify(context.Background(), in); err != nil {
+		t.Fatalf("the right assertion after a refused one: %v", err)
+	}
+	// ... and it is spent by the accepted one.
 	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceUnknown)
+}
+
+func TestRefusesAForgedNonce(t *testing.T) {
+	e := newEnv(t)
+	in := e.good(t)
+	for i := range in.Nonce {
+		f := append([]byte(nil), in.Nonce...)
+		f[i] ^= 1
+		in2 := in
+		in2.Nonce = f
+		if err := mustFail(e.v.Verify(context.Background(), in2)); !errors.Is(err, adminauth.ErrNonceUnknown) && !errors.Is(err, adminauth.ErrNonceExpired) {
+			t.Fatalf("byte %d flipped: %v", i, err)
+		}
+	}
+	// A nonce of another store (another key) is a forgery.
+	other := adminauth.NewNonces(func() time.Time { return *e.clock }, time.Minute, 16)
+	n, _ := other.Issue(exporterA)
+	in.Nonce = n
+	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceUnknown)
+}
+
+func TestRefusesAFutureIssueTimeEdit(t *testing.T) {
+	// Moving the issue time forward to stretch the lifetime breaks the MAC.
+	e := newEnv(t)
+	in := e.good(t)
+	in.Nonce = append([]byte(nil), in.Nonce...)
+	in.Nonce[7]++
+	*e.clock = e.clock.Add(time.Minute)
+	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceUnknown)
+}
+
+func TestOnlyAcceptedNoncesAreRemembered(t *testing.T) {
+	e := newEnv(t)
+	for range 1000 {
+		e.nonces.Issue(exporterA) // issued, never used: stores nothing
+	}
+	// 16 accepted calls fit; the 17th needs room that expiry has not freed.
+	e.auth.ZeroCount = true
+	for range 16 {
+		if _, err := e.v.Verify(context.Background(), e.good(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantErr(t, mustFail(e.v.Verify(context.Background(), e.good(t))), adminauth.ErrNonceStoreFull)
+	*e.clock = e.clock.Add(time.Minute) // expiry frees the room
+	if _, err := e.v.Verify(context.Background(), e.good(t)); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRefusesAnExpiredNonce(t *testing.T) {
@@ -159,7 +210,7 @@ func TestRefusesANonceUsedOnAnotherConnection(t *testing.T) {
 	e := newEnv(t)
 	in := e.good(t) // nonce issued on, and signed for, connection A
 	in.Exporter = exporterB
-	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceOtherConnection)
+	wantErr(t, mustFail(e.v.Verify(context.Background(), in)), adminauth.ErrNonceUnknown)
 }
 
 func TestRefusesAnotherConnectionsExporterInTheSignature(t *testing.T) {
@@ -202,6 +253,19 @@ func TestRefusesACounterRegression(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.auth.Counter = 5
+	e.auth.FreezeCount = true
+	wantErr(t, mustFail(e.v.Verify(context.Background(), e.good(t))), adminauth.ErrCounterRegression)
+}
+
+// WebAuthn L3 7.2: the counter must be greater than the stored one when either
+// is non-zero; an equal non-zero value is a replay or a clone.
+func TestRefusesAnEqualNonZeroCounter(t *testing.T) {
+	e := newEnv(t)
+	e.auth.Counter = 10
+	if _, err := e.v.Verify(context.Background(), e.good(t)); err != nil {
+		t.Fatal(err)
+	}
+	e.auth.Counter = 10
 	e.auth.FreezeCount = true
 	wantErr(t, mustFail(e.v.Verify(context.Background(), e.good(t))), adminauth.ErrCounterRegression)
 }
@@ -271,27 +335,17 @@ func TestClientDataHashFieldsDoNotRunTogether(t *testing.T) {
 
 func TestNonceBounds(t *testing.T) {
 	e := newEnv(t)
-	for range 4 {
-		if _, _, err := e.nonces.Issue(exporterA); err != nil {
-			t.Fatal(err)
+	// A flood of nonces, from many connections, never refuses another one and
+	// never stops a legitimate call: issuing stores nothing.
+	for i := range 5000 {
+		x := bytes.Repeat([]byte{byte(i), byte(i >> 8)}, 16)
+		n, _ := e.nonces.Issue(x)
+		if len(n) != adminauth.TokenLen {
+			t.Fatalf("nonce length %d", len(n))
 		}
 	}
-	if _, _, err := e.nonces.Issue(exporterA); !errors.Is(err, adminauth.ErrTooManyNonces) {
-		t.Fatalf("per-connection bound: %v", err)
-	}
-	// Another connection still gets nonces until the global bound.
-	for i := range 12 {
-		x := bytes.Repeat([]byte{byte(i)}, 32)
-		if _, _, err := e.nonces.Issue(x); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, _, err := e.nonces.Issue(exporterB); !errors.Is(err, adminauth.ErrTooManyNonces) {
-		t.Fatalf("global bound: %v", err)
-	}
-	*e.clock = e.clock.Add(2 * time.Minute) // expiry frees the room
-	if _, _, err := e.nonces.Issue(exporterB); err != nil {
-		t.Fatal(err)
+	if _, err := e.v.Verify(context.Background(), e.good(t)); err != nil {
+		t.Fatalf("a legitimate call after a nonce flood: %v", err)
 	}
 }
 

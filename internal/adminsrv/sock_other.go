@@ -9,6 +9,7 @@ package adminsrv
 import (
 	"errors"
 	"net"
+	"os"
 )
 
 // ListenUnix is not supported here: the file-permission guarantee of the
@@ -17,4 +18,5 @@ func ListenUnix(string) (net.Listener, error) {
 	return nil, errors.New("adminsrv: the enrolment socket requires a Unix system")
 }
 
-func checkSecretFile(string) error { return nil }
+// readSecretFile cannot check ownership or mode on this platform.
+func readSecretFile(path string) ([]byte, error) { return os.ReadFile(path) }

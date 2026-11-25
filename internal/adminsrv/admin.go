@@ -166,6 +166,8 @@ func mapErr(err error) error {
 		return status.Error(codes.NotFound, "not found")
 	case errors.Is(err, store.ErrExists):
 		return status.Error(codes.AlreadyExists, "already exists")
+	case errors.Is(err, store.ErrLastCredential):
+		return status.Error(codes.FailedPrecondition, "refusing to revoke the last active admin credential")
 	case errors.Is(err, store.ErrInvalid):
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -178,10 +180,7 @@ func (a *Admin) GetNonce(ctx context.Context, _ *adminv1.GetNonceRequest) (*admi
 	if err != nil {
 		return nil, err
 	}
-	n, until, err := a.Nonces.Issue(exp)
-	if err != nil {
-		return nil, status.Error(codes.ResourceExhausted, err.Error())
-	}
+	n, until := a.Nonces.Issue(exp)
 	return &adminv1.GetNonceResponse{Nonce: n, ExpiresAt: timestamppb.New(until)}, nil
 }
 

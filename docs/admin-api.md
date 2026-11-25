@@ -9,8 +9,14 @@ refused, the serialized parameters inside an envelope above 16 KiB.
 A mutating call carries an `Envelope`: `nonce`, `request` (the serialized
 `...Params` message), `credential_id`, `authenticator_data`, `signature`.
 
-1. The client calls `GetNonce`; the server returns 32 random bytes, valid for one
-   minute, remembered against that TLS connection.
+1. The client calls `GetNonce` (unauthenticated); the server returns a 56-byte
+   stateless nonce: issue time (8 bytes) || 16 random bytes || HMAC-SHA-256 over
+   (label, issue time, random, the connection's exporter value), keyed with a
+   random key made when the server starts. Nothing is stored at issue time, so
+   no number of connections or nonces can fill anything or lock an
+   administrator out. It is valid for one minute, on that connection only. The
+   key is per process: a restart invalidates outstanding nonces (an in-flight
+   call is retried with a new one).
 2. The client computes the WebAuthn client data hash
 
    ```
@@ -28,15 +34,34 @@ A mutating call carries an `Envelope`: `nonce`, `request` (the serialized
    presence and user verification.
 4. The server recomputes the hash from what it received and from its own view of
    the connection, then checks, in this order: the nonce was issued on this
-   connection, is unexpired and unused (it is consumed even if the call is then
-   refused); the credential is active; `rpIdHash` is SHA-256 of the relying
-   party id; UP and UV are set; the signature verifies; the signature counter
-   did not go backwards (when either side is non-zero).
+   connection (MAC and exporter), is unexpired and unused; the credential is
+   active; `rpIdHash` is SHA-256 of the relying party id; UP and UV are set; the
+   signature verifies; the signature counter is strictly greater than the
+   stored one (when either side is non-zero; WebAuthn L3 7.2 treats "less than
+   or equal" as a clone signal, and we refuse, equal included). Only then is
+   the nonce marked used.
+
+   **Single use.** A nonce is spent by the first ACCEPTED assertion; it is
+   remembered until it would have expired, so that set holds at most the
+   accepted calls of one minute (capped at 4096). A call REFUSED for any other
+   reason no longer consumes its nonce (it used to): there is nothing stored to
+   burn, and burning on refusal would require storing every nonce at issue
+   time, which is what let an unauthenticated peer fill the table. A refused
+   nonce stays useless to anyone else: it is bound to the connection by the MAC
+   and to the request by the signature, and it expires in a minute.
+
+   The listener refuses (closes unserved) connections beyond 256 in total or 16
+   per remote host; idle connections are closed after one minute.
 
 Each refusal is `Unauthenticated`, with a reason, and changes nothing. A failure
 of the server's own storage during these checks is not a refusal: it is
 `Internal`, without detail (the cause is in the server log), since the caller
 has not been authenticated yet.
+
+`RevokeAdminCredential` refuses (`FailedPrecondition`) to revoke the last active
+credential, which would lock every administrator out. The TLS key file must be
+a regular file (no symbolic link) owned by the server's user, mode 0600 or
+stricter.
 
 ## Sessions
 

@@ -151,7 +151,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	defer st.Close()
 
 	log := slog.New(slog.NewTextHandler(&syncWriter{w: stderr}, nil))
-	nonces := adminauth.NewNonces(time.Now, time.Minute, 64, 1024)
+	nonces := adminauth.NewNonces(time.Now, time.Minute, 4096)
 	admin := &adminsrv.Admin{
 		Store:    st,
 		Verifier: &adminauth.Verifier{RPID: c.rpID, Credentials: st, Nonces: nonces},
@@ -180,7 +180,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 
 	errc := make(chan error, 2)
 	run := func(s *grpc.Server, ln net.Listener) { errc <- s.Serve(ln) }
-	go run(adminSrv, adminLn)
+	go run(adminSrv, adminsrv.LimitListener(adminLn, adminsrv.MaxConns, adminsrv.MaxConnsPerHost))
 	go run(enrolSrv, enrolLn)
 
 	var first error

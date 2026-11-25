@@ -36,7 +36,7 @@ func serverOptions() []grpc.ServerOption {
 		grpc.MaxSendMsgSize(4 * MaxMessageSize),
 		grpc.MaxConcurrentStreams(32),
 		grpc.ConnectionTimeout(10 * time.Second),
-		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 5 * time.Minute, MaxConnectionAge: time.Hour}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: time.Minute, MaxConnectionAge: time.Hour}),
 	}
 }
 
@@ -59,14 +59,20 @@ func NewEnrolServer(e *Enrol) *grpc.Server {
 	return s
 }
 
-// LoadTLS reads a certificate and key from files. The key file must not be
-// accessible to group or others. A systemd credential file (mode 0400) passes
+// LoadTLS reads a certificate and key from files. The key file must be a
+// regular file (no symbolic link) owned by this process's effective user and
+// not accessible to group or others. A systemd credential file (mode 0400) passes
 // this check like any other private file; there is no exemption.
 func LoadTLS(certFile, keyFile string) (tls.Certificate, error) {
-	if err := checkSecretFile(keyFile); err != nil {
+	key, err := readSecretFile(keyFile)
+	if err != nil {
 		return tls.Certificate{}, err
 	}
-	return tls.LoadX509KeyPair(certFile, keyFile)
+	cert, err := os.ReadFile(certFile)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	return tls.X509KeyPair(cert, key)
 }
 
 // CredentialsEnv names the systemd credentials directory variable.

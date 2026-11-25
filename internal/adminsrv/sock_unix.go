@@ -8,6 +8,7 @@ package adminsrv
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -64,13 +65,38 @@ func ownedBy(fi fs.FileInfo, uid int) bool {
 	return ok && int(st.Uid) == uid
 }
 
-func checkSecretFile(path string) error {
-	fi, err := os.Stat(path)
+// maxSecretLen bounds what readSecretFile reads.
+const maxSecretLen = 1 << 20
+
+// readSecretFile reads a secret file that must be a regular file (not a
+// symbolic link, which is refused at open, nor a device or FIFO), owned by this
+// process's effective user, and closed to group and others. The checks are made
+// on the opened descriptor, so the file checked is the file read.
+func readSecretFile(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("adminsrv: key file %s: %w (symbolic links are refused)", path, err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("adminsrv: key file %s is not a regular file", path)
+	}
+	if !ownedBy(fi, geteuid()) {
+		return nil, fmt.Errorf("adminsrv: key file %s is not owned by this user", path)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("adminsrv: key file %s is accessible to group or others (mode %v); use 0600", path, fi.Mode().Perm())
+		return nil, fmt.Errorf("adminsrv: key file %s is accessible to group or others (mode %v); use 0600", path, fi.Mode().Perm())
 	}
-	return nil
+	b, err := io.ReadAll(io.LimitReader(f, maxSecretLen+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxSecretLen {
+		return nil, fmt.Errorf("adminsrv: key file %s is larger than %d bytes", path, maxSecretLen)
+	}
+	return b, nil
 }
