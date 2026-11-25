@@ -373,15 +373,20 @@ func TestSecondListenerFailureStopsFirst(t *testing.T) {
 	}
 	defer busy.Close()
 	args = append(drop(args, "--admin-listen"), "--admin-listen", busy.Addr().String())
-	if _, _, err := run(t, t.Context(), args); err == nil {
-		t.Fatal("listening on a busy port succeeded")
+	busyCtx, stop := context.WithTimeout(t.Context(), 3*time.Second)
+	defer stop()
+	if _, _, err := run(t, busyCtx, args); err == nil || busyCtx.Err() != nil {
+		t.Fatalf("listening on a busy port: err = %v (ctx %v), want an immediate refusal", err, busyCtx.Err())
 	}
 	// A directory that is not private makes the socket refuse.
 	args, _, sock := baseArgs(t, a, 0o600)
 	if err := os.Chmod(filepath.Dir(sock), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := run(t, t.Context(), args); err == nil {
-		t.Fatal("an enrolment socket in a 0755 directory was accepted")
+	// Bounded: a refusal that went missing would leave a live server.
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if _, _, err := run(t, ctx, args); err == nil || !strings.Contains(err.Error(), "0700") {
+		t.Fatalf("an enrolment socket in a 0755 directory: err = %v, want the 0700 refusal", err)
 	}
 }
