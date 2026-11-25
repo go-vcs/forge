@@ -13,6 +13,7 @@ package fidotest
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -52,6 +53,13 @@ type Authenticator struct {
 	NoX5C        bool
 	LeafAAGUID   *[16]byte // AAGUID extension value override
 	LeafOU       string    // subject OU override
+
+	// Leaf certificate shapes, applied by Reissue.
+	LeafCA        bool             // mark the leaf a CA
+	LeafNoBasic   bool             // omit basic constraints
+	LeafCritical  bool             // mark the AAGUID extension critical
+	LeafExtValue  []byte           // raw AAGUID extension value override
+	LeafPublicKey crypto.PublicKey // certify this key instead of the signing one
 
 	caKey   *ecdsa.PrivateKey
 	caCert  *x509.Certificate
@@ -101,15 +109,43 @@ func (a *Authenticator) leaf() {
 	if a.LeafAAGUID != nil {
 		id = *a.LeafAAGUID
 	}
+	ext := must(asn1.Marshal(id[:]))
+	if a.LeafExtValue != nil {
+		ext = a.LeafExtValue
+	}
+	var pub crypto.PublicKey = &a.leafKey.PublicKey
+	if a.LeafPublicKey != nil {
+		pub = a.LeafPublicKey
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial(),
 		Subject:               pkix.Name{Country: []string{"SE"}, Organization: []string{"Test"}, OrganizationalUnit: []string{ou}, CommonName: "Test attestation"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * time.Hour * 365),
-		BasicConstraintsValid: true,
-		ExtraExtensions:       []pkix.Extension{{Id: oidAAGUID, Value: must(asn1.Marshal(id[:]))}},
+		BasicConstraintsValid: !a.LeafNoBasic,
+		IsCA:                  a.LeafCA,
+		ExtraExtensions:       []pkix.Extension{{Id: oidAAGUID, Critical: a.LeafCritical, Value: ext}},
 	}
-	a.leafDER = must(x509.CreateCertificate(rand.Reader, tmpl, a.caCert, &a.leafKey.PublicKey, a.caKey))
+	a.leafDER = must(x509.CreateCertificate(rand.Reader, tmpl, a.caCert, pub, a.caKey))
+}
+
+// TamperLeaf rewrites the to-be-signed bytes of the attestation certificate
+// with f and signs the result with the root, to build a certificate that
+// x509.CreateCertificate would refuse to make (an old version, say).
+func (a *Authenticator) TamperLeaf(f func(tbs []byte) []byte) {
+	c := must(x509.ParseCertificate(a.leafDER))
+	var parts struct {
+		TBS asn1.RawValue
+		Alg asn1.RawValue
+		Sig asn1.BitString
+	}
+	must(asn1.Unmarshal(c.Raw, &parts))
+	tbs := f(append([]byte(nil), c.RawTBSCertificate...))
+	d := sha256.Sum256(tbs)
+	parts.TBS = asn1.RawValue{FullBytes: tbs}
+	parts.Sig = asn1.BitString{Bytes: must(ecdsa.SignASN1(rand.Reader, a.caKey, d[:])), BitLength: 0}
+	parts.Sig.BitLength = len(parts.Sig.Bytes) * 8
+	a.leafDER = must(asn1.Marshal(parts))
 }
 
 // Reissue makes a new attestation leaf after a knob that shapes it changed.

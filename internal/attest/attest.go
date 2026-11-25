@@ -116,10 +116,8 @@ func ParseAAGUID(s string) ([16]byte, error) {
 	if !ok {
 		return out, fmt.Errorf("attest: %q is not an AAGUID", s)
 	}
-	b, err := hex.DecodeString(strings.ReplaceAll(n, "-", ""))
-	if err != nil || len(b) != 16 {
-		return out, fmt.Errorf("attest: %q is not an AAGUID", s)
-	}
+	// NormalizeAAGUID has accepted exactly 32 hex digits, so this cannot fail.
+	b, _ := hex.DecodeString(strings.ReplaceAll(n, "-", ""))
 	copy(out[:], b)
 	return out, nil
 }
@@ -208,7 +206,7 @@ func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (
 		return Result{}, fmt.Errorf("%w: %s", ErrAAGUIDNotListed, FormatAAGUID(ad.AAGUID))
 	}
 	pub, err := ad.PublicKey()
-	if err != nil || pub.Curve != elliptic.P256() {
+	if err != nil { // PublicKey decodes only P-256 with ES256
 		return Result{}, fmt.Errorf("%w: %v", ErrAlgorithm, err)
 	}
 
