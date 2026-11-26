@@ -146,7 +146,21 @@ milestone.
 3. `forge`: OIDC sign-in through the bridge, read-only web UI (tree, blob,
    commits, diff).
 4. `gitproto` + `forge`: receive-pack with in-process push policy.
+   - **A1** (agent-oriented layer, [agent-vcs.md](agent-vcs.md)): read and
+     write without a clone (`CreateChange`, trees, blobs, diffs at any
+     revision), stable change ids and immutable revision refs, server-signed
+     commits, compare-and-swap ref updates, idempotent writes, agent-session
+     identities.
 5. `actions`: workflow planning; runner protocol server; GARM `gitea` type.
+   - **A2**: CI verdicts bound to the exact commit, server-side merge gated on
+     them and on a FIDO2-signed human approval for protected refs, event
+     stream. **A3**: path-scoped leases, path permissions. **A4**: the forge
+     backend of `forge-agentd`. **A5**: atomic multi-repository change sets
+     (at most 64 repositories).
+
+**A0**, the local daemon `forge-agentd` with a GitHub backend (shared object
+cache, one poller and event stream per machine), does not depend on the
+milestones above and comes first ([agent-vcs.md](agent-vcs.md#milestones)).
 6. Pull requests and reviews in the web UI.
 7. GARM `govcs` forge type; artifacts.
 

@@ -14,6 +14,13 @@ sign-in and the web UI are still design only. Read [docs/design.md](docs/design.
 for the goals, the security invariants, how the work is split between
 `go-vcs/forge`, `go-vcs/gitproto` and `go-vcs/actions`, and the milestones.
 
+[docs/agent-vcs.md](docs/agent-vcs.md) designs (not yet implemented) an
+agent-oriented layer on top of git: writes and reads without a clone, change
+ids stable across rebase, merges only on a CI verdict for the exact merged
+commit, path-scoped leases, one local daemon per machine, and atomic changes
+across repositories. Git stays the storage and interchange format. The first
+milestone is the local daemon against GitHub, before the forge hosts anything.
+
 ## Administration with a FIDO2 key
 
 Two binaries, both pure Go (`CGO_ENABLED=0`):
