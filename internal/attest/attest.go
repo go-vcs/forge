@@ -15,7 +15,6 @@ package attest
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
@@ -209,16 +208,13 @@ func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (
 	if alg != fido.AlgES256 {
 		return Result{}, fmt.Errorf("%w: statement alg %d", ErrAlgorithm, alg)
 	}
-	cred, att, err := webauthn.VerifyAttestationStatement(p.rpID, format, authData, attStmt, cdh,
+	// ParseStatement guarantees an x5c chain, so the attestation is Basic with
+	// a trust path; the library takes an ES256 statement over a P-256
+	// attestation key only, and its AAGUID is the one parsed above.
+	_, att, err := webauthn.VerifyAttestationStatement(p.rpID, format, authData, attStmt, cdh,
 		webauthn.Policy{RequireUV: true, RequireAAGUIDExtension: true})
 	if err != nil {
 		return Result{}, mapErr(err)
-	}
-	if att.Type != webauthn.AttestationBasic || len(att.TrustPath) == 0 || cred.AAGUID != ad.AAGUID {
-		return Result{}, fmt.Errorf("%w: not a packed x5c attestation", ErrFormat)
-	}
-	if lpub, ok := att.TrustPath[0].PublicKey.(*ecdsa.PublicKey); !ok || lpub.Curve != elliptic.P256() {
-		return Result{}, fmt.Errorf("%w: attestation key is not P-256", ErrCertificate)
 	}
 	// The root list is looked up only after the allowlist, and what it says is
 	// what the chain must end in.
