@@ -9,20 +9,14 @@
 // is no "none" format, no self attestation and no switch that turns a check
 // off: a Policy cannot even be built without an allowlist and a root source.
 //
-// This is the WebAuthn Level 3 section 8.2 "packed" verification procedure. It
-// lives here because go-authn/fido leaves the attestation statement as raw
-// CBOR; it may move there later.
+// The WebAuthn Level 3 section 8.2 "packed" verification procedure is
+// go-authn/webauthn's; this package adds forge's policy around it.
 package attest
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -32,6 +26,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/go-authn/fido"
 	"github.com/go-authn/fido/mds"
+	"github.com/go-authn/webauthn"
 )
 
 // Errors Verify returns; each has a test.
@@ -174,11 +169,14 @@ func ParseStatement(b []byte) (alg int64, sig []byte, chain []*x509.Certificate,
 	return s.Alg, s.Sig, chain, nil
 }
 
-// oidAAGUID is id-fido-gen-ce-aaguid.
-var oidAAGUID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 45724, 1, 1, 4}
-
 // Verify checks an attestation object's parts against the challenge hash cdh
 // and returns the credential it attests. Every check must pass.
+//
+// The statement and certificate rules, the flags, the signature over
+// authData || cdh and the AAGUID extension are go-authn/webauthn's
+// VerifyAttestationStatement; what stays here is what only forge decides: the
+// packed-with-x5c-only format, the allowlist, hardware-bound ES256 keys, the
+// bounds, and the choice of roots.
 func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (Result, error) {
 	if format != "packed" {
 		return Result{}, fmt.Errorf("%w: %q", ErrFormat, format)
@@ -190,16 +188,6 @@ func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: %v", ErrMalformed, err)
 	}
-	want := sha256.Sum256([]byte(p.rpID))
-	if subtle.ConstantTimeCompare(ad.RPIDHash[:], want[:]) != 1 {
-		return Result{}, ErrRPIDMismatch
-	}
-	if !ad.Flags.Has(fido.FlagUP) {
-		return Result{}, ErrNotPresent
-	}
-	if !ad.Flags.Has(fido.FlagUV) {
-		return Result{}, ErrNotVerified
-	}
 	if !ad.Flags.Has(fido.FlagAT) || len(ad.CredentialID) == 0 || len(ad.CredentialID) > MaxCredIDLen {
 		return Result{}, ErrNoCredential
 	}
@@ -209,21 +197,28 @@ func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (
 	if !p.allow[ad.AAGUID] {
 		return Result{}, fmt.Errorf("%w: %s", ErrAAGUIDNotListed, FormatAAGUID(ad.AAGUID))
 	}
-	pub, err := ad.PublicKey()
-	if err != nil { // PublicKey decodes only P-256 with ES256
+	pub, err := ad.PublicKey() // decodes only P-256 with ES256
+	if err != nil {
 		return Result{}, fmt.Errorf("%w: %v", ErrAlgorithm, err)
 	}
-
-	alg, sig, chain, err := ParseStatement(attStmt)
+	// forge's own bounds: one to MaxChainLen certificates, ES256, no extra keys.
+	alg, _, _, err := ParseStatement(attStmt)
 	if err != nil {
 		return Result{}, err
 	}
 	if alg != fido.AlgES256 {
 		return Result{}, fmt.Errorf("%w: statement alg %d", ErrAlgorithm, alg)
 	}
-	leaf := chain[0]
-	if err := checkLeaf(leaf, ad.AAGUID); err != nil {
-		return Result{}, err
+	cred, att, err := webauthn.VerifyAttestationStatement(p.rpID, format, authData, attStmt, cdh,
+		webauthn.Policy{RequireUV: true, RequireAAGUIDExtension: true})
+	if err != nil {
+		return Result{}, mapErr(err)
+	}
+	if att.Type != webauthn.AttestationBasic || len(att.TrustPath) == 0 || cred.AAGUID != ad.AAGUID {
+		return Result{}, fmt.Errorf("%w: not a packed x5c attestation", ErrFormat)
+	}
+	if lpub, ok := att.TrustPath[0].PublicKey.(*ecdsa.PublicKey); !ok || lpub.Curve != elliptic.P256() {
+		return Result{}, fmt.Errorf("%w: attestation key is not P-256", ErrCertificate)
 	}
 	// The root list is looked up only after the allowlist, and what it says is
 	// what the chain must end in.
@@ -235,83 +230,39 @@ func (p *Policy) Verify(format string, authData, attStmt []byte, cdh [32]byte) (
 	if len(roots) == 0 {
 		return Result{}, fmt.Errorf("%w: %s lists no attestation roots", ErrUnknownModel, aaguid)
 	}
-	pool := x509.NewCertPool()
-	for _, r := range roots {
-		pool.AddCert(r)
-	}
-	inter := x509.NewCertPool()
-	for _, c := range chain[1:] {
-		inter.AddCert(c)
-	}
-	if _, err := leaf.Verify(x509.VerifyOptions{
-		Roots:         pool,
-		Intermediates: inter,
-		CurrentTime:   p.now(),
-		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-	}); err != nil {
+	if err := att.VerifyTrustPath(roots, p.now()); err != nil {
 		return Result{}, fmt.Errorf("%w: %v", ErrChain, err)
-	}
-	lpub, ok := leaf.PublicKey.(*ecdsa.PublicKey)
-	if !ok || lpub.Curve != elliptic.P256() {
-		return Result{}, fmt.Errorf("%w: attestation key is not P-256", ErrCertificate)
-	}
-	signed := make([]byte, 0, len(authData)+len(cdh))
-	signed = append(signed, authData...)
-	signed = append(signed, cdh[:]...)
-	digest := sha256.Sum256(signed)
-	if !ecdsa.VerifyASN1(lpub, digest[:], sig) {
-		return Result{}, ErrBadSignature
 	}
 	return Result{AAGUID: aaguid, CredentialID: append([]byte(nil), ad.CredentialID...), PublicKey: pub}, nil
 }
 
-// checkLeaf applies the requirements of WebAuthn 8.2.1 on the attestation
-// certificate: version 3, subject OU "Authenticator Attestation", not a CA, and
-// the AAGUID extension equal to the AAGUID in the authenticator data. WebAuthn
-// asks for the extension only "if present"; we require it, because Verify runs
-// only for allowlisted models, which are known to carry it.
-func checkLeaf(c *x509.Certificate, aaguid [16]byte) error {
-	if c.Version != 3 {
-		return fmt.Errorf("%w: version %d", ErrCertificate, c.Version)
+// mapErr turns the library's sentinels into forge's, which stay the public
+// contract. The AAGUID extension errors keep ErrCertificate as before.
+func mapErr(err error) error {
+	to := func(s error) error { return fmt.Errorf("%w: %v", s, err) }
+	switch {
+	case errors.Is(err, webauthn.ErrAAGUIDExtensionMissing):
+		return fmt.Errorf("%w: %w: %v", ErrCertificate, ErrAAGUIDExtMissing, err)
+	case errors.Is(err, webauthn.ErrAAGUIDExtensionMalformed):
+		return fmt.Errorf("%w: %w: %v", ErrCertificate, ErrAAGUIDExtMalformed, err)
+	case errors.Is(err, webauthn.ErrAAGUIDExtensionMismatch):
+		return fmt.Errorf("%w: %w: %v", ErrCertificate, ErrAAGUIDExtMismatch, err)
+	case errors.Is(err, webauthn.ErrSignature):
+		return to(ErrBadSignature)
+	case errors.Is(err, webauthn.ErrRPIDHash):
+		return to(ErrRPIDMismatch)
+	case errors.Is(err, webauthn.ErrUserPresence):
+		return to(ErrNotPresent)
+	case errors.Is(err, webauthn.ErrUserVerification):
+		return to(ErrNotVerified)
+	case errors.Is(err, webauthn.ErrBackup):
+		return to(ErrBackupEligible)
+	case errors.Is(err, webauthn.ErrAlgorithm), errors.Is(err, webauthn.ErrKey):
+		// The credential key and the statement alg were checked as ES256 before
+		// the call, so what is left is the attestation key not fitting alg.
+		return fmt.Errorf("%w: attestation key is not P-256: %v", ErrCertificate, err)
+	case errors.Is(err, webauthn.ErrAttestation):
+		return to(ErrCertificate)
 	}
-	if !hasOU(c.Subject, "Authenticator Attestation") {
-		return fmt.Errorf("%w: subject OU is not \"Authenticator Attestation\"", ErrCertificate)
-	}
-	if c.BasicConstraintsValid && c.IsCA {
-		return fmt.Errorf("%w: a CA certificate", ErrCertificate)
-	}
-	if !c.BasicConstraintsValid {
-		return fmt.Errorf("%w: no basic constraints", ErrCertificate)
-	}
-	// x509.ParseCertificate refuses a certificate with a repeated extension, so
-	// at most one matches.
-	for _, e := range c.Extensions {
-		if !e.Id.Equal(oidAAGUID) {
-			continue
-		}
-		var v []byte
-		if rest, err := asn1.Unmarshal(e.Value, &v); err != nil || len(rest) != 0 {
-			return fmt.Errorf("%w: %w: not an OCTET STRING", ErrCertificate, ErrAAGUIDExtMalformed)
-		}
-		if len(v) != 16 {
-			return fmt.Errorf("%w: %w: %d bytes, want 16", ErrCertificate, ErrAAGUIDExtMalformed, len(v))
-		}
-		if e.Critical {
-			return fmt.Errorf("%w: AAGUID extension is critical", ErrCertificate)
-		}
-		if !bytes.Equal(v, aaguid[:]) {
-			return fmt.Errorf("%w: %w: differs from the authenticator data", ErrCertificate, ErrAAGUIDExtMismatch)
-		}
-		return nil
-	}
-	return fmt.Errorf("%w: %w", ErrCertificate, ErrAAGUIDExtMissing)
-}
-
-func hasOU(n pkix.Name, want string) bool {
-	for _, ou := range n.OrganizationalUnit {
-		if ou == want {
-			return true
-		}
-	}
-	return false
+	return to(ErrMalformed)
 }
