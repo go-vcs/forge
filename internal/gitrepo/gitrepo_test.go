@@ -44,7 +44,7 @@ func TestParsePathRefuses(t *testing.T) {
 		"Alice/proj", "alice/Proj", "ali ce/proj", "alice/pr\x00oj", "alice/pr\noj",
 		"alice/pr\x7foj", "alice/pröj", "~alice/proj", "alice/proj?x", "alice/proj\\x",
 		"-alice/proj", strings.Repeat("a", 40) + "/proj", "alice/" + strings.Repeat("x", 101),
-		"alice/" + strings.Repeat("x", MaxPathLen), "C:/alice/proj", "alice/proj%2e",
+		"alice/" + strings.Repeat("x", 4096), strings.Repeat("a", 4096), "C:/alice/proj", "alice/proj%2e",
 	} {
 		if n, err := ParsePath(in); !errors.Is(err, ErrPath) {
 			t.Errorf("ParsePath(%q) = %v, %v; want ErrPath", in, n, err)
@@ -53,9 +53,6 @@ func TestParsePathRefuses(t *testing.T) {
 	// the length bound itself
 	if _, err := ParsePath("alice/" + strings.Repeat("x", 100)); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := ParsePath(strings.Repeat("a", MaxPathLen+1)); !errors.Is(err, ErrPath) {
-		t.Fatal("a path over MaxPathLen was accepted")
 	}
 }
 

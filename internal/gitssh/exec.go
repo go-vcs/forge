@@ -43,9 +43,6 @@ func ParseExec(cmd string) (gitrepo.Name, error) {
 		return gitrepo.Name{}, fmt.Errorf("%w: usage: git-upload-pack '<owner>/<name>'", ErrCommand)
 	}
 	path := arg[1 : len(arg)-1]
-	if strings.ContainsAny(path, `'\!`) {
-		return gitrepo.Name{}, fmt.Errorf("%w: unexpected character in the path", gitrepo.ErrPath)
-	}
 	return gitrepo.ParsePath(path)
 }
 

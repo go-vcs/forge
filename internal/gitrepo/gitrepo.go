@@ -33,9 +33,6 @@ import (
 // PublicMarker is the file whose presence in a repository makes it public.
 const PublicMarker = "git-daemon-export-ok"
 
-// MaxPathLen bounds a repository path from the wire.
-const MaxPathLen = 256
-
 // ErrNotFound is returned for a repository that does not exist and for one the
 // caller may not read: the two are indistinguishable on purpose, so a name
 // cannot be probed.
@@ -59,20 +56,12 @@ func (n Name) String() string { return n.Owner + "/" + n.Repo }
 // segment, no byte outside printable ASCII, and only the lowercase letters,
 // digits, ".", "_" and "-" that logins and names are made of.
 func ParsePath(p string) (Name, error) {
-	if len(p) == 0 || len(p) > MaxPathLen {
-		return Name{}, fmt.Errorf("%w: length", ErrPath)
-	}
-	for i := 0; i < len(p); i++ {
-		if p[i] <= 0x20 || p[i] >= 0x7f {
-			return Name{}, fmt.Errorf("%w: unexpected byte", ErrPath)
-		}
-	}
+	// The two anchored patterns below are the whole check: they bound the
+	// owner to 39 and the name to 100 bytes and allow nothing outside
+	// [a-z0-9._-], so there is no length or byte test of its own to keep in step.
 	p = strings.TrimPrefix(p, "/")
 	p = strings.TrimSuffix(p, ".git")
-	owner, repo, ok := strings.Cut(p, "/")
-	if !ok {
-		return Name{}, fmt.Errorf("%w: want owner/name", ErrPath)
-	}
+	owner, repo, _ := strings.Cut(p, "/")
 	if store.ValidLogin(owner) != nil {
 		return Name{}, fmt.Errorf("%w: owner", ErrPath)
 	}
@@ -98,9 +87,6 @@ type Service struct {
 
 // Validate refuses a service that cannot work.
 func (s *Service) Validate() error {
-	if s.Root == "" {
-		return errors.New("gitrepo: no repositories root")
-	}
 	fi, err := os.Stat(s.Root)
 	if err != nil {
 		return fmt.Errorf("gitrepo: repositories root: %w", err)
