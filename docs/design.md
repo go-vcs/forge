@@ -1,8 +1,8 @@
 # go-vcs design
 
 Status: draft, 2026-11-26. Milestone 2 (admin gRPC API and CLI, see
-[admin-api.md](admin-api.md); clone and fetch over SSH) is implemented; smart
-HTTP and the rest are not.
+[admin-api.md](admin-api.md); clone and fetch over SSH and smart HTTP) is
+implemented; the rest is not.
 
 ## Why
 
@@ -143,7 +143,7 @@ milestone.
    `fetch` serving from an existing repository; fuzzers; benchmark vs
    `git upload-pack`.
 2. `forge`: storage layout, accounts, admin gRPC API with FIDO2 assertions and
-   its CLI; SSH and HTTP clone. Done for SSH (HTTP next): fetch is protocol v2 only, read only
+   its CLI; SSH and HTTP clone. Done for both: fetch is protocol v2 only, read only
    (`git-upload-pack`); push is refused with a message naming milestone 4.
    Repositories live at `<repos-root>/<owner>/<name>.git`; a reader must be the
    owner, or the repository must hold a `git-daemon-export-ok` file (anonymous
@@ -152,9 +152,17 @@ milestone.
    from the 403 that gitprotocol-http asks for). There is no ACL yet.
    SSH: public-key authentication through the per-user keys of the admin API,
    `git-upload-pack` exec only (no shell, pty, forwarding or agent), a host key
-   read from a file and never generated. Each transport bounds the request
-   size, the pkt-line count, the time per request, and the concurrent sessions
-   per account and in total.
+   read from a file and never generated.
+   HTTP: smart HTTP over TLS 1.3 (the admin certificate), anonymous and for
+   public repositories only; `GET info/refs?service=git-upload-pack` and `POST
+   git-upload-pack`, gzip request bodies accepted. A request without
+   `Git-Protocol: version=2`, the dumb protocol and `git-receive-pack` are
+   refused with a message that says why (400, 403). Once the reply is a pkt-line
+   stream the status is already 200, so a body over the bounds or a read cut at
+   the deadline is reported as a pkt-line `ERR`. Sessions are keyed by client
+   address. Each transport bounds the request size (the body as sent, and once
+   decompressed), the pkt-line count, the time per request, and the concurrent
+   sessions per account (per address over HTTP) and in total.
 3. `forge`: OIDC sign-in through the bridge, read-only web UI (tree, blob,
    commits, diff).
 4. `gitproto` + `forge`: receive-pack with in-process push policy.

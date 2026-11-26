@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/go-vcs/forge/internal/adminauth"
 	"github.com/go-vcs/forge/internal/adminsrv"
 	"github.com/go-vcs/forge/internal/attest"
+	"github.com/go-vcs/forge/internal/githttp"
 	"github.com/go-vcs/forge/internal/gitrepo"
 	"github.com/go-vcs/forge/internal/gitssh"
 	"github.com/go-vcs/forge/internal/store"
@@ -62,6 +65,7 @@ type serveConfig struct {
 
 	// git transports (milestone 2): off unless --ssh-listen is given
 	sshListen, sshHostKey, reposRoot, gitBin string
+	httpListen                               string
 	gitTimeout                               time.Duration
 	gitSessions, gitSessionsPerAccount       int
 }
@@ -96,6 +100,7 @@ arguments, the environment or a URL.`,
 	f.StringVar(&c.sshListen, "ssh-listen", "", "serve git clone and fetch over SSH on this `address` (off when empty)")
 	f.StringVar(&c.sshHostKey, "ssh-host-key", "", "SSH host key `file`, an ed25519 OpenSSH private key, mode 0600, never generated (default: systemd credential ssh_host_key)")
 	f.StringVar(&c.reposRoot, "repos-root", "", "`directory` holding <owner>/<name>.git bare repositories (required with --ssh-listen)")
+	f.StringVar(&c.httpListen, "http-listen", "", "serve anonymous git clone and fetch of public repositories over smart HTTP (TLS 1.3, protocol v2) on this `address` (off when empty)")
 	f.StringVar(&c.gitBin, "git", "", "git `executable` (default: git on PATH)")
 	f.DurationVar(&c.gitTimeout, "git-timeout", gitrepo.DefaultRequestDuration, "longest a git session may last")
 	f.IntVar(&c.gitSessions, "git-sessions", gitrepo.DefaultTotalSessions, "most git sessions at once, in total")
@@ -127,9 +132,9 @@ func (c serveConfig) validate() error {
 	if len(c.aaguids) == 0 {
 		return errors.New("at least one --aaguid is required: enrolment has no \"accept any key\" mode")
 	}
-	if c.sshListen != "" {
+	if c.sshListen != "" || c.httpListen != "" {
 		if c.reposRoot == "" {
-			return errors.New("--repos-root is required with --ssh-listen")
+			return errors.New("--repos-root is required with --ssh-listen and --http-listen")
 		}
 		if c.gitSessions < 1 || c.gitSessionsPerAccount < 1 || c.gitTimeout <= 0 {
 			return errors.New("--git-sessions, --git-sessions-per-account and --git-timeout must be positive")
@@ -194,6 +199,13 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		}
 	}
 
+	var httpSrv *http.Server
+	if c.httpListen != "" {
+		if httpSrv, err = newHTTPServer(c, tlsConfig(cert), log); err != nil {
+			return err
+		}
+	}
+
 	adminLn, err := net.Listen("tcp", c.adminListen)
 	if err != nil {
 		return err
@@ -203,7 +215,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		adminLn.Close()
 		return err
 	}
-	var sshLn net.Listener
+	var sshLn, httpLn net.Listener
 	if sshSrv != nil {
 		if sshLn, err = net.Listen("tcp", c.sshListen); err != nil {
 			adminLn.Close()
@@ -211,11 +223,21 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 			return err
 		}
 	}
+	if httpSrv != nil {
+		if httpLn, err = net.Listen("tcp", c.httpListen); err != nil {
+			adminLn.Close()
+			enrolLn.Close()
+			if sshLn != nil {
+				sshLn.Close()
+			}
+			return err
+		}
+	}
 	out := &syncWriter{w: stdout}
 	fmt.Fprintf(out, "admin listening on %s\n", adminLn.Addr())
 	fmt.Fprintf(out, "enrolment listening on %s\n", c.enrolSocket)
 
-	errc := make(chan error, 3)
+	errc := make(chan error, 4)
 	run := func(s *grpc.Server, ln net.Listener) { errc <- s.Serve(ln) }
 	go run(adminSrv, adminsrv.LimitListener(adminLn, adminsrv.MaxConns, adminsrv.MaxConnsPerHost))
 	go run(enrolSrv, enrolLn)
@@ -228,6 +250,19 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	} else {
 		close(sshDone)
 	}
+	httpDone := make(chan struct{})
+	if httpSrv != nil {
+		fmt.Fprintf(out, "git over HTTP listening on %s\n", httpLn.Addr())
+		go func() {
+			defer close(httpDone)
+			// the certificate is already in the TLS config
+			if err := httpSrv.ServeTLS(httpLn, "", ""); !errors.Is(err, http.ErrServerClosed) {
+				errc <- err
+			}
+		}()
+	} else {
+		close(httpDone)
+	}
 
 	var first error
 	select {
@@ -238,7 +273,38 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	enrolSrv.GracefulStop()
 	stopSSH()
 	<-sshDone
+	if httpSrv != nil {
+		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = httpSrv.Shutdown(shut)
+		cancel()
+		_ = httpSrv.Close()
+	}
+	<-httpDone
 	return first
+}
+
+// newHTTPServer builds the smart HTTP server. TLS 1.3 only, HTTP/1.1, and every
+// timeout set: a client that dawdles holds nothing for long.
+func newHTTPServer(c serveConfig, tc *tls.Config, log *slog.Logger) (*http.Server, error) {
+	repos := &gitrepo.Service{Root: c.reposRoot, Git: c.gitBin}
+	if err := repos.Validate(); err != nil {
+		return nil, err
+	}
+	tc = tc.Clone()
+	tc.NextProtos = []string{"http/1.1"}
+	return &http.Server{
+		Handler: &githttp.Handler{
+			Repos:          repos,
+			Sessions:       &gitrepo.Limiter{Total: c.gitSessions, PerKey: c.gitSessionsPerAccount},
+			Log:            log,
+			RequestTimeout: c.gitTimeout,
+		},
+		TLSConfig:         tc,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+	}, nil
 }
 
 // newSSHServer builds the git-over-SSH server: the host key must exist (it is
