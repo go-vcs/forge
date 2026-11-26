@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -18,6 +19,9 @@ import (
 
 // openSigner opens the hardware key. Tests replace it.
 var openSigner = platformSigner
+
+// openFile is a variable so that a test can make a read fail.
+var openFile = func(path string) (io.ReadCloser, error) { return os.Open(path) }
 
 // dial and dialUnix are variables so that a test can make a dial fail, which
 // grpc.NewClient does only for a target it cannot parse.
@@ -47,7 +51,7 @@ func RootCmd() *cobra.Command {
 	pf.StringVar(&o.credentialID, "credential-id", "", "administrator credential id, in `hex` (printed by enrol)")
 	pf.StringVar(&o.socket, "socket", "", "enrolment Unix socket `path` (enrol only)")
 
-	root.AddCommand(enrolCmd(&o), credentialsCmd(&o), usersCmd(&o), identitiesCmd(&o))
+	root.AddCommand(enrolCmd(&o), credentialsCmd(&o), usersCmd(&o), identitiesCmd(&o), sshKeysCmd(&o), policyCmd(&o))
 	return root
 }
 

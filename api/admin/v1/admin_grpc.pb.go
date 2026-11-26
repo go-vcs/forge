@@ -36,6 +36,11 @@ const (
 	AdminService_BindIdentity_FullMethodName          = "/govcs.forge.admin.v1.AdminService/BindIdentity"
 	AdminService_ListIdentities_FullMethodName        = "/govcs.forge.admin.v1.AdminService/ListIdentities"
 	AdminService_UnbindIdentity_FullMethodName        = "/govcs.forge.admin.v1.AdminService/UnbindIdentity"
+	AdminService_ListSSHKeys_FullMethodName           = "/govcs.forge.admin.v1.AdminService/ListSSHKeys"
+	AdminService_AddSSHKey_FullMethodName             = "/govcs.forge.admin.v1.AdminService/AddSSHKey"
+	AdminService_RemoveSSHKey_FullMethodName          = "/govcs.forge.admin.v1.AdminService/RemoveSSHKey"
+	AdminService_GetPolicy_FullMethodName             = "/govcs.forge.admin.v1.AdminService/GetPolicy"
+	AdminService_SetPolicy_FullMethodName             = "/govcs.forge.admin.v1.AdminService/SetPolicy"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -56,6 +61,11 @@ type AdminServiceClient interface {
 	BindIdentity(ctx context.Context, in *BindIdentityRequest, opts ...grpc.CallOption) (*BindIdentityResponse, error)
 	ListIdentities(ctx context.Context, in *ListIdentitiesRequest, opts ...grpc.CallOption) (*ListIdentitiesResponse, error)
 	UnbindIdentity(ctx context.Context, in *UnbindIdentityRequest, opts ...grpc.CallOption) (*UnbindIdentityResponse, error)
+	ListSSHKeys(ctx context.Context, in *ListSSHKeysRequest, opts ...grpc.CallOption) (*ListSSHKeysResponse, error)
+	AddSSHKey(ctx context.Context, in *AddSSHKeyRequest, opts ...grpc.CallOption) (*AddSSHKeyResponse, error)
+	RemoveSSHKey(ctx context.Context, in *RemoveSSHKeyRequest, opts ...grpc.CallOption) (*RemoveSSHKeyResponse, error)
+	GetPolicy(ctx context.Context, in *GetPolicyRequest, opts ...grpc.CallOption) (*GetPolicyResponse, error)
+	SetPolicy(ctx context.Context, in *SetPolicyRequest, opts ...grpc.CallOption) (*SetPolicyResponse, error)
 }
 
 type adminServiceClient struct {
@@ -166,6 +176,56 @@ func (c *adminServiceClient) UnbindIdentity(ctx context.Context, in *UnbindIdent
 	return out, nil
 }
 
+func (c *adminServiceClient) ListSSHKeys(ctx context.Context, in *ListSSHKeysRequest, opts ...grpc.CallOption) (*ListSSHKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSSHKeysResponse)
+	err := c.cc.Invoke(ctx, AdminService_ListSSHKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) AddSSHKey(ctx context.Context, in *AddSSHKeyRequest, opts ...grpc.CallOption) (*AddSSHKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddSSHKeyResponse)
+	err := c.cc.Invoke(ctx, AdminService_AddSSHKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) RemoveSSHKey(ctx context.Context, in *RemoveSSHKeyRequest, opts ...grpc.CallOption) (*RemoveSSHKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveSSHKeyResponse)
+	err := c.cc.Invoke(ctx, AdminService_RemoveSSHKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) GetPolicy(ctx context.Context, in *GetPolicyRequest, opts ...grpc.CallOption) (*GetPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPolicyResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetPolicy(ctx context.Context, in *SetPolicyRequest, opts ...grpc.CallOption) (*SetPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetPolicyResponse)
+	err := c.cc.Invoke(ctx, AdminService_SetPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -184,6 +244,11 @@ type AdminServiceServer interface {
 	BindIdentity(context.Context, *BindIdentityRequest) (*BindIdentityResponse, error)
 	ListIdentities(context.Context, *ListIdentitiesRequest) (*ListIdentitiesResponse, error)
 	UnbindIdentity(context.Context, *UnbindIdentityRequest) (*UnbindIdentityResponse, error)
+	ListSSHKeys(context.Context, *ListSSHKeysRequest) (*ListSSHKeysResponse, error)
+	AddSSHKey(context.Context, *AddSSHKeyRequest) (*AddSSHKeyResponse, error)
+	RemoveSSHKey(context.Context, *RemoveSSHKeyRequest) (*RemoveSSHKeyResponse, error)
+	GetPolicy(context.Context, *GetPolicyRequest) (*GetPolicyResponse, error)
+	SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -223,6 +288,21 @@ func (UnimplementedAdminServiceServer) ListIdentities(context.Context, *ListIden
 }
 func (UnimplementedAdminServiceServer) UnbindIdentity(context.Context, *UnbindIdentityRequest) (*UnbindIdentityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UnbindIdentity not implemented")
+}
+func (UnimplementedAdminServiceServer) ListSSHKeys(context.Context, *ListSSHKeysRequest) (*ListSSHKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSSHKeys not implemented")
+}
+func (UnimplementedAdminServiceServer) AddSSHKey(context.Context, *AddSSHKeyRequest) (*AddSSHKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddSSHKey not implemented")
+}
+func (UnimplementedAdminServiceServer) RemoveSSHKey(context.Context, *RemoveSSHKeyRequest) (*RemoveSSHKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveSSHKey not implemented")
+}
+func (UnimplementedAdminServiceServer) GetPolicy(context.Context, *GetPolicyRequest) (*GetPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetPolicy not implemented")
+}
+func (UnimplementedAdminServiceServer) SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetPolicy not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -425,6 +505,96 @@ func _AdminService_UnbindIdentity_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_ListSSHKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSSHKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ListSSHKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ListSSHKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ListSSHKeys(ctx, req.(*ListSSHKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_AddSSHKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddSSHKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).AddSSHKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_AddSSHKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).AddSSHKey(ctx, req.(*AddSSHKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_RemoveSSHKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveSSHKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).RemoveSSHKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_RemoveSSHKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).RemoveSSHKey(ctx, req.(*RemoveSSHKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_GetPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetPolicy(ctx, req.(*GetPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetPolicy(ctx, req.(*SetPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -471,6 +641,26 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnbindIdentity",
 			Handler:    _AdminService_UnbindIdentity_Handler,
+		},
+		{
+			MethodName: "ListSSHKeys",
+			Handler:    _AdminService_ListSSHKeys_Handler,
+		},
+		{
+			MethodName: "AddSSHKey",
+			Handler:    _AdminService_AddSSHKey_Handler,
+		},
+		{
+			MethodName: "RemoveSSHKey",
+			Handler:    _AdminService_RemoveSSHKey_Handler,
+		},
+		{
+			MethodName: "GetPolicy",
+			Handler:    _AdminService_GetPolicy_Handler,
+		},
+		{
+			MethodName: "SetPolicy",
+			Handler:    _AdminService_SetPolicy_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

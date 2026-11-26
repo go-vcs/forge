@@ -47,6 +47,13 @@ service AdminService {
   rpc BindIdentity(BindIdentityRequest) returns (BindIdentityResponse);
   rpc ListIdentities(ListIdentitiesRequest) returns (ListIdentitiesResponse);
   rpc UnbindIdentity(UnbindIdentityRequest) returns (UnbindIdentityResponse);
+
+  rpc ListSSHKeys(ListSSHKeysRequest) returns (ListSSHKeysResponse);
+  rpc AddSSHKey(AddSSHKeyRequest) returns (AddSSHKeyResponse);
+  rpc RemoveSSHKey(RemoveSSHKeyRequest) returns (RemoveSSHKeyResponse);
+
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+  rpc SetPolicy(SetPolicyRequest) returns (SetPolicyResponse);
 }
 
 // EnrolService is served ONLY on a local Unix socket whose access is controlled
@@ -187,6 +194,80 @@ message UnbindIdentityRequest {
 }
 
 message UnbindIdentityResponse {}
+
+// SSHKey is a public key a user authenticates git over SSH with.
+message SSHKey {
+  // fingerprint is "SHA256:" followed by the unpadded base64 of the SHA-256 of
+  // the key's wire encoding (what ssh-keygen -l prints).
+  string fingerprint = 1;
+  string login = 2;
+  // key_type is the SSH algorithm name, e.g. "ssh-ed25519" or
+  // "sk-ssh-ed25519@openssh.com".
+  string key_type = 3;
+  // security_key is true for the FIDO-backed "sk-" key types.
+  bool security_key = 4;
+  string comment = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message AddSSHKeyParams {
+  string login = 1;
+  // public_key is one authorized_keys line without options: "<type> <base64> [comment]".
+  string public_key = 2;
+}
+
+message AddSSHKeyRequest {
+  Envelope envelope = 1;
+}
+
+message AddSSHKeyResponse {
+  SSHKey key = 1;
+}
+
+message ListSSHKeysRequest {
+  bytes session_token = 1;
+  // login, when set, restricts the list to one user.
+  string login = 2;
+}
+
+message ListSSHKeysResponse {
+  repeated SSHKey keys = 1;
+}
+
+message RemoveSSHKeyParams {
+  string fingerprint = 1;
+}
+
+message RemoveSSHKeyRequest {
+  Envelope envelope = 1;
+}
+
+message RemoveSSHKeyResponse {}
+
+// Policy holds the forge-wide settings.
+message Policy {
+  // require_sk_ssh_keys refuses to store, and refuses to authenticate with, any
+  // SSH key that is not a FIDO-backed "sk-" key.
+  bool require_sk_ssh_keys = 1;
+}
+
+message GetPolicyRequest {
+  bytes session_token = 1;
+}
+
+message GetPolicyResponse {
+  Policy policy = 1;
+}
+
+message SetPolicyParams {
+  Policy policy = 1;
+}
+
+message SetPolicyRequest {
+  Envelope envelope = 1;
+}
+
+message SetPolicyResponse {}
 
 message BeginEnrolRequest {}
 

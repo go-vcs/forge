@@ -166,3 +166,36 @@ func (c *Client) RevokeCredential(ctx context.Context, id []byte) error {
 	_, err = c.Admin.RevokeAdminCredential(ctx, &adminv1.RevokeAdminCredentialRequest{Envelope: env})
 	return err
 }
+
+// AddSSHKey registers an authorized_keys line for a user.
+func (c *Client) AddSSHKey(ctx context.Context, login, publicKey string) (*adminv1.SSHKey, error) {
+	env, err := c.Sign(ctx, adminv1.AdminService_AddSSHKey_FullMethodName, &adminv1.AddSSHKeyParams{Login: login, PublicKey: publicKey})
+	if err != nil {
+		return nil, err
+	}
+	r, err := c.Admin.AddSSHKey(ctx, &adminv1.AddSSHKeyRequest{Envelope: env})
+	if err != nil {
+		return nil, err
+	}
+	return r.Key, nil
+}
+
+// RemoveSSHKey removes the key with this fingerprint.
+func (c *Client) RemoveSSHKey(ctx context.Context, fingerprint string) error {
+	env, err := c.Sign(ctx, adminv1.AdminService_RemoveSSHKey_FullMethodName, &adminv1.RemoveSSHKeyParams{Fingerprint: fingerprint})
+	if err != nil {
+		return err
+	}
+	_, err = c.Admin.RemoveSSHKey(ctx, &adminv1.RemoveSSHKeyRequest{Envelope: env})
+	return err
+}
+
+// SetPolicy replaces the forge-wide policy.
+func (c *Client) SetPolicy(ctx context.Context, p *adminv1.Policy) error {
+	env, err := c.Sign(ctx, adminv1.AdminService_SetPolicy_FullMethodName, &adminv1.SetPolicyParams{Policy: p})
+	if err != nil {
+		return err
+	}
+	_, err = c.Admin.SetPolicy(ctx, &adminv1.SetPolicyRequest{Envelope: env})
+	return err
+}

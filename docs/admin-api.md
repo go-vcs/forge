@@ -86,6 +86,29 @@ server is restarted with a current blob, because a revocation published since
 is not in the one it holds. Signed calls and sessions do not depend on the blob
 and keep working.
 
+## SSH keys and policy
+
+| Call | Kind | What it does |
+|---|---|---|
+| `AddSSHKey(login, public_key)` | signed | Registers one `authorized_keys` line, **without options**, for an enabled user. |
+| `RemoveSSHKey(fingerprint)` | signed | Removes the key with that `SHA256:` fingerprint. |
+| `ListSSHKeys(login?)` | session | Lists keys (fingerprint, login, type, whether FIDO-backed, comment). |
+| `SetPolicy(policy)` | signed | Replaces the forge-wide settings. A message field left out is its zero value. |
+| `GetPolicy()` | session | Reads them. |
+
+Accepted key types: `ssh-ed25519`, `ecdsa-sha2-nistp256/384/521`, `ssh-rsa`
+with a modulus of at least 3072 bits, and the FIDO-backed `sk-ssh-ed25519@openssh.com`
+and `sk-ecdsa-sha2-nistp256@openssh.com`. DSA, certificates, options in front of
+the key (`command=`, `from=`...), a line over 8 KiB and a comment over 128 bytes
+are `InvalidArgument`. A key belongs to one account: registering it again, for
+anyone, is `AlreadyExists`.
+
+`Policy.require_sk_ssh_keys` makes `AddSSHKey` refuse any key that is not an
+`sk-` type, **and** makes the SSH transport refuse to authenticate with one
+already stored (the keys stay in the database, so relaxing the policy brings
+them back). The CLI is `forgectl ssh-keys add|list|remove` (the key is read from
+a file or `-`, never from argv) and `forgectl policy show|set`.
+
 ## Audit
 
 A signed call leaves two rows in `admin_audit`: an `attempt` row when it is
