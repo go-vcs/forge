@@ -131,8 +131,24 @@ func TestSSHKeyBadParameters(t *testing.T) {
 			"policy": adminv1.AdminService_SetPolicy_FullMethodName,
 		}[name]
 		env := f.envelope(c, method, nil, tweak{rawReq: []byte{0xff, 0xff}})
-		if err := call(env); code(err) != codes.InvalidArgument {
-			t.Fatalf("%s with garbage parameters = %v", name, err)
-		}
+		wantStatus(t, name, call(env), codes.InvalidArgument, "bad parameters")
 	}
+}
+
+// A storage failure is Internal and says nothing of its cause, whichever call hits it.
+func TestSSHKeyStorageFailuresAreInternal(t *testing.T) {
+	f := newForge(t)
+	f.mustEnrol()
+	c := f.dial()
+	ctx := t.Context()
+	tok, err := c.OpenSession(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.rawExec(`DROP TABLE settings; DROP TABLE ssh_keys`)
+	_, err = c.Admin.ListSSHKeys(ctx, &adminv1.ListSSHKeysRequest{SessionToken: tok})
+	wantStatus(t, "ListSSHKeys", err, codes.Internal, "internal error")
+	_, err = c.Admin.GetPolicy(ctx, &adminv1.GetPolicyRequest{SessionToken: tok})
+	wantStatus(t, "GetPolicy", err, codes.Internal, "internal error")
+	wantStatus(t, "SetPolicy", c.SetPolicy(ctx, &adminv1.Policy{RequireSkSshKeys: true}), codes.Internal, "internal error")
 }

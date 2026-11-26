@@ -6,6 +6,7 @@ package store_test
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-vcs/forge/internal/sshtest"
@@ -120,6 +121,89 @@ func TestPolicyRequireSKKeys(t *testing.T) {
 	if ks, _ := s.ListSSHKeys(ctx, "alice"); len(ks) != 2 {
 		t.Fatalf("%d keys, want 2", len(ks))
 	}
+}
+
+// withKey returns a store on a file database holding alice and one key, after
+// stmts ran on it behind the store's back.
+func withKey(t *testing.T, stmts string) (*store.Store, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "forge.db")
+	s, err := store.Open(t.Context(), path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser(t.Context(), "alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	k := sshtest.NewEd25519(t)
+	if _, err := s.AddSSHKey(t.Context(), "alice", k.Line); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	rawExec(t, path, stmts)
+	s, err = store.Open(t.Context(), path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s, k.Fingerprint
+}
+
+// Each statement of the key store has its own failure path: a table that is
+// gone, or a row that cannot be read, is an error naming the cause, never a
+// success and never a refusal that looks like a policy decision.
+func TestSSHKeyStatementsFailOneByOne(t *testing.T) {
+	ctx := t.Context()
+	fresh := sshtest.NewEd25519(t).Line
+	t.Run("policy unreadable on add", func(t *testing.T) {
+		s := damaged(t, `DROP TABLE settings`)
+		if _, err := s.CreateUser(ctx, "alice", ""); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.AddSSHKey(ctx, "alice", fresh)
+		wantErr(t, "AddSSHKey", err, "settings")
+	})
+	t.Run("user lookup fails on add", func(t *testing.T) {
+		s := damaged(t, `DROP TABLE users`)
+		_, err := s.AddSSHKey(ctx, "alice", fresh)
+		wantErr(t, "AddSSHKey", err, "no such table: users")
+	})
+	t.Run("insert fails on add", func(t *testing.T) {
+		s := damaged(t, `DROP TABLE ssh_keys`)
+		if _, err := s.CreateUser(ctx, "alice", ""); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.AddSSHKey(ctx, "alice", fresh)
+		wantErr(t, "AddSSHKey", err, "ssh_keys")
+	})
+	t.Run("unreadable row", func(t *testing.T) {
+		s, _ := withKey(t, `CREATE TABLE k2(id INTEGER PRIMARY KEY, user_id, fingerprint, key_type, blob, comment, created_at);
+			INSERT INTO k2 SELECT id, user_id, fingerprint, key_type, blob, comment, 'yesterday' FROM ssh_keys;
+			DROP TABLE ssh_keys; ALTER TABLE k2 RENAME TO ssh_keys;`)
+		_, err := s.ListSSHKeys(ctx, "")
+		wantErr(t, "ListSSHKeys", err, "Scan")
+	})
+	t.Run("stored blob is not a key", func(t *testing.T) {
+		s, _ := withKey(t, `UPDATE ssh_keys SET blob = x'00'`)
+		_, err := s.ListSSHKeys(ctx, "")
+		wantErr(t, "ListSSHKeys", err, "invalid ssh public key")
+	})
+	t.Run("lookup fails on authenticate", func(t *testing.T) {
+		s := damaged(t, `DROP TABLE ssh_keys`)
+		_, err := s.AuthenticateSSHKey(ctx, "SHA256:x")
+		wantErr(t, "AuthenticateSSHKey", err, "ssh_keys")
+		if errors.Is(err, store.ErrNotAuthorized) {
+			t.Fatal("a storage failure must not read as a refusal")
+		}
+	})
+	t.Run("policy unreadable on authenticate", func(t *testing.T) {
+		s, fp := withKey(t, `DROP TABLE settings`)
+		_, err := s.AuthenticateSSHKey(ctx, fp)
+		wantErr(t, "AuthenticateSSHKey", err, "settings")
+		if errors.Is(err, store.ErrNotAuthorized) {
+			t.Fatal("a storage failure must not read as a refusal")
+		}
+	})
 }
 
 func TestSSHKeyStoreFailures(t *testing.T) {

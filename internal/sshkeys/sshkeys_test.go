@@ -121,6 +121,38 @@ func TestParseRefused(t *testing.T) {
 	}
 }
 
+func TestParseBounds(t *testing.T) {
+	ed, _, _ := ed25519.GenerateKey(rand.Reader)
+	edk, _ := ssh.NewPublicKey(ed)
+	good := line(t, edk, "")
+	// Padding is trimmed, so only the length bound can refuse it.
+	if _, err := sshkeys.Parse(good + strings.Repeat(" ", sshkeys.MaxLineLen)); !errors.Is(err, sshkeys.ErrInvalid) {
+		t.Fatalf("padded line err = %v", err)
+	}
+	if _, err := sshkeys.Parse(good + strings.Repeat(" ", sshkeys.MaxLineLen-len(good))); err != nil {
+		t.Fatalf("line of exactly the bound refused: %v", err)
+	}
+	// A real certificate has a matching declared type: only the allowed set refuses it.
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	signer, _ := ssh.NewSignerFromKey(priv)
+	cert := &ssh.Certificate{Key: edk, CertType: ssh.UserCert, ValidBefore: ssh.CertTimeInfinity}
+	if err := cert.SignCert(rand.Reader, signer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sshkeys.Parse(strings.TrimSpace(string(ssh.MarshalAuthorizedKey(cert)))); !errors.Is(err, sshkeys.ErrInvalid) {
+		t.Fatalf("certificate err = %v", err)
+	}
+	// A long algorithm name is clipped in the message.
+	_, err := sshkeys.Parse(strings.Repeat("x", 500) + " AAAA")
+	if err == nil || len(err.Error()) > 200 || !strings.Contains(err.Error(), "...") {
+		t.Fatalf("long type err = %v", err)
+	}
+	_, err = sshkeys.Parse(strings.Repeat("x", 48) + " AAAA")
+	if err == nil || strings.Contains(err.Error(), "...") {
+		t.Fatalf("48-byte type must not be clipped: %v", err)
+	}
+}
+
 func TestIsSecurityKeyType(t *testing.T) {
 	for typ, want := range map[string]bool{
 		ssh.KeyAlgoSKED25519: true, ssh.KeyAlgoSKECDSA256: true,

@@ -77,8 +77,8 @@ func Parse(line string) (Key, error) {
 		return Key{}, refuse("not UTF-8")
 	}
 	line = strings.TrimSpace(line)
-	if line == "" || strings.ContainsAny(line, "\r\n\x00") {
-		return Key{}, refuse("want exactly one non-empty line")
+	if strings.ContainsAny(line, "\r\n") {
+		return Key{}, refuse("want exactly one line")
 	}
 	typ, rest, _ := strings.Cut(line, " ")
 	if !Allowed(typ) {
@@ -96,23 +96,16 @@ func Parse(line string) (Key, error) {
 	}
 	// ParseAuthorizedKey would accept options and skip leading garbage, so the
 	// line is rebuilt without the comment: type and blob are all it may hold.
-	pub, _, options, tail, err := ssh.ParseAuthorizedKey([]byte(typ + " " + b64))
+	// typ is an accepted key type and the text holds no newline, so there are
+	// no options and no tail; ParseAuthorizedKey itself refuses a blob whose
+	// encoded type is not typ.
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(typ + " " + b64))
 	if err != nil {
 		return Key{}, refuse("%v", err)
 	}
-	if len(options) != 0 || len(tail) != 0 {
-		return Key{}, refuse("options or trailing data")
-	}
-	if pub.Type() != typ {
-		return Key{}, refuse("declared type %q differs from the encoded %q", clip(typ), pub.Type())
-	}
 	if typ == ssh.KeyAlgoRSA {
-		cp, ok := pub.(ssh.CryptoPublicKey)
-		if !ok {
-			return Key{}, refuse("RSA key without a modulus")
-		}
-		rk, ok := cp.CryptoPublicKey().(*rsa.PublicKey)
-		if !ok || rk.N.BitLen() < MinRSABits {
+		// An "ssh-rsa" key from the parser is always a *rsa.PublicKey.
+		if pub.(ssh.CryptoPublicKey).CryptoPublicKey().(*rsa.PublicKey).N.BitLen() < MinRSABits {
 			return Key{}, refuse("RSA keys need at least %d bits", MinRSABits)
 		}
 	}

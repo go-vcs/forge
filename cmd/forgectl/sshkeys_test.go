@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -60,11 +61,12 @@ func TestReadKeyFile(t *testing.T) {
 	}
 	r := newRig(t)
 	r.enrol(t)
-	if _, err := r.admin("ssh-keys", "add", "alice", big); err == nil || !strings.Contains(err.Error(), "longer than") {
+	// The client refuses before anything is sent: the message names the file.
+	if _, err := r.admin("ssh-keys", "add", "alice", big); err == nil || !strings.Contains(err.Error(), big+": longer than") {
 		t.Fatalf("oversized key file = %v", err)
 	}
-	if _, err := r.admin("ssh-keys", "add", "alice", filepath.Join(dir, "missing")); err == nil {
-		t.Fatal("a missing key file was accepted")
+	if _, err := r.admin("ssh-keys", "add", "alice", filepath.Join(dir, "missing")); err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("a missing key file = %v", err)
 	}
 	// "-" reads standard input.
 	k := sshtest.NewEd25519(t)
@@ -86,6 +88,36 @@ func TestReadKeyFile(t *testing.T) {
 	openFile = func(string) (io.ReadCloser, error) { return io.NopCloser(errReader{}), nil }
 	if _, err := r.admin("ssh-keys", "add", "alice", "x"); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("read error = %v", err)
+	}
+}
+
+func (r *rig) rawExec(stmts string) {
+	r.t.Helper()
+	db, err := sql.Open("sqlite", "file:"+r.dbPath)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(stmts); err != nil {
+		r.t.Fatalf("%s: %v", stmts, err)
+	}
+}
+
+// A refusal of the server reaches the operator as an error, with nothing printed
+// as if it had worked.
+func TestSSHKeyCommandsReportServerFailures(t *testing.T) {
+	r := newRig(t)
+	r.enrol(t)
+	if out, err := r.admin("ssh-keys", "remove", "SHA256:nope"); err == nil || out != "" {
+		t.Fatalf("removing an unknown key printed %q, %v", out, err)
+	}
+	r.rawExec(`DROP TABLE settings; DROP TABLE ssh_keys`)
+	for _, args := range [][]string{
+		{"ssh-keys", "list"}, {"policy", "show"}, {"policy", "set", "--require-sk-ssh-keys"},
+	} {
+		if out, err := r.admin(args...); err == nil || out != "" {
+			t.Fatalf("%v printed %q, %v; want an error and no output", args, out, err)
+		}
 	}
 }
 
