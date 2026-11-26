@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/go-vcs/forge/internal/adminsrv"
 	"github.com/go-vcs/forge/internal/fidotest"
 	"github.com/go-vcs/forge/internal/gittest"
 	"github.com/go-vcs/forge/internal/sshtest"
@@ -85,13 +86,27 @@ func TestSSHPortInUseStopsTheOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer busy.Close()
-	args, _, _ := baseArgs(t, a, 0o600)
+	args, _, sock := baseArgs(t, a, 0o600)
 	args = append(args, "--ssh-listen", busy.Addr().String(), "--ssh-host-key", host, "--repos-root", t.TempDir())
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	if _, _, err := run(t, ctx, args); err == nil || ctx.Err() != nil {
-		t.Fatalf("a busy SSH port: err = %v (ctx %v), want an immediate refusal", err, ctx.Err())
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("a busy SSH port made serve panic: %v", r)
+			}
+		}()
+		_, _, err = run(t, ctx, args)
+	}()
+	if err == nil || ctx.Err() != nil || !strings.Contains(err.Error(), busy.Addr().String()) {
+		t.Fatalf("a busy SSH port: err = %v (ctx %v), want an immediate refusal naming the address", err, ctx.Err())
 	}
+	// the listeners opened before the failure were released
+	ln, lerr := adminsrv.ListenUnix(sock)
+	if lerr != nil {
+		t.Fatalf("the enrolment socket was left open: %v", lerr)
+	}
+	ln.Close()
 }
 
 func TestServeGitOverSSH(t *testing.T) {

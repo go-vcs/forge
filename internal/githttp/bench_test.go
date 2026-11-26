@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -26,7 +27,15 @@ func BenchmarkClone(b *testing.B) {
 		b.Skip("no git")
 	}
 	root := b.TempDir()
-	gittest.NewRepo(b, root, "alice", "pub", true)
+	if src := os.Getenv("FORGE_BENCH_REPO"); src != "" {
+		// a large repository: FORGE_BENCH_REPO is a clone to serve as alice/pub
+		gittest.Git(b, root, "clone", "-q", "--bare", src, filepath.Join(root, "alice", "pub.git"))
+		if err := os.WriteFile(filepath.Join(root, "alice", "pub.git", "git-daemon-export-ok"), nil, 0o644); err != nil {
+			b.Fatal(err)
+		}
+	} else {
+		gittest.NewRepo(b, root, "alice", "pub", true)
+	}
 	forge := httptest.NewServer(&Handler{
 		Repos:    &gitrepo.Service{Root: root},
 		Sessions: &gitrepo.Limiter{Total: 8, PerKey: 8},
