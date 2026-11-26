@@ -96,6 +96,27 @@ func (f *fakeForge) UnbindIdentity(_ context.Context, r *adminv1.UnbindIdentityR
 	return &adminv1.UnbindIdentityResponse{}, nil
 }
 
+func (f *fakeForge) AddSSHKey(_ context.Context, r *adminv1.AddSSHKeyRequest) (*adminv1.AddSSHKeyResponse, error) {
+	if err := f.seen(r.Envelope); err != nil {
+		return nil, err
+	}
+	return &adminv1.AddSSHKeyResponse{Key: &adminv1.SSHKey{Fingerprint: "SHA256:k"}}, nil
+}
+
+func (f *fakeForge) RemoveSSHKey(_ context.Context, r *adminv1.RemoveSSHKeyRequest) (*adminv1.RemoveSSHKeyResponse, error) {
+	if err := f.seen(r.Envelope); err != nil {
+		return nil, err
+	}
+	return &adminv1.RemoveSSHKeyResponse{}, nil
+}
+
+func (f *fakeForge) SetPolicy(_ context.Context, r *adminv1.SetPolicyRequest) (*adminv1.SetPolicyResponse, error) {
+	if err := f.seen(r.Envelope); err != nil {
+		return nil, err
+	}
+	return &adminv1.SetPolicyResponse{}, nil
+}
+
 func (f *fakeForge) RevokeAdminCredential(_ context.Context, r *adminv1.RevokeAdminCredentialRequest) (*adminv1.RevokeAdminCredentialResponse, error) {
 	if err := f.seen(r.Envelope); err != nil {
 		return nil, err
@@ -329,6 +350,15 @@ func TestSignedCalls(t *testing.T) {
 		"RevokeCredential": func(c *adminclient.Client) (any, error) {
 			return nil, c.RevokeCredential(context.Background(), []byte("x"))
 		},
+		"AddSSHKey": func(c *adminclient.Client) (any, error) {
+			return c.AddSSHKey(context.Background(), "ada", "ssh-ed25519 AAAA")
+		},
+		"RemoveSSHKey": func(c *adminclient.Client) (any, error) {
+			return nil, c.RemoveSSHKey(context.Background(), "SHA256:k")
+		},
+		"SetPolicy": func(c *adminclient.Client) (any, error) {
+			return nil, c.SetPolicy(context.Background(), &adminv1.Policy{RequireSkSshKeys: true})
+		},
 	}
 	for name, call := range calls {
 		t.Run(name+"/ok", func(t *testing.T) {
@@ -353,6 +383,10 @@ func TestSignedCalls(t *testing.T) {
 			case "BindIdentity":
 				if v.(*adminv1.Identity).Issuer != "iss" {
 					t.Fatalf("identity %v", v)
+				}
+			case "AddSSHKey":
+				if v.(*adminv1.SSHKey).Fingerprint != "SHA256:k" {
+					t.Fatalf("key %v", v)
 				}
 			}
 		})
@@ -399,6 +433,8 @@ func isNil(v any) bool {
 	case *adminv1.User:
 		return x == nil
 	case *adminv1.Identity:
+		return x == nil
+	case *adminv1.SSHKey:
 		return x == nil
 	}
 	return false

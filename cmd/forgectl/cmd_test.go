@@ -39,6 +39,7 @@ type rig struct {
 	addr   string
 	sock   string
 	caFile string
+	dbPath string
 }
 
 func newRig(t *testing.T) *rig {
@@ -49,7 +50,8 @@ func newRig(t *testing.T) *rig {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
-	st, err := store.Open(t.Context(), ":memory:", nil)
+	dbPath := filepath.Join(dir, "forge.db")
+	st, err := store.Open(t.Context(), dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +61,7 @@ func newRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &rig{t: t, auth: a, st: st, sock: filepath.Join(dir, "e.sock")}
+	r := &rig{t: t, auth: a, st: st, sock: filepath.Join(dir, "e.sock"), dbPath: dbPath}
 
 	ul, err := adminsrv.ListenUnix(r.sock)
 	if err != nil {
