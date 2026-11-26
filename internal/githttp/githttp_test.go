@@ -286,7 +286,10 @@ func TestSessionsAreBounded(t *testing.T) {
 		}
 		done <- err
 	}()
-	pw.Write([]byte(pkt("command=ls-refs\n"))) // the session is open and waiting for the rest
+	// the session is open and waiting for the rest; a server that does not read
+	// must fail this test, not hang it
+	go pw.Write([]byte(pkt("command=ls-refs\n")))
+	t.Cleanup(func() { pw.Close() })
 	deadline := time.Now().Add(5 * time.Second)
 	var code int
 	var hdr http.Header
@@ -301,7 +304,11 @@ func TestSessionsAreBounded(t *testing.T) {
 		t.Fatalf("a second session beside a full limiter: %d %v", code, hdr)
 	}
 	pw.Close()
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first request did not end")
+	}
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if code, _, _ = r.do(t, "GET", "/alice/pub.git/info/refs?service=git-upload-pack", v2, nil); code == 200 {
