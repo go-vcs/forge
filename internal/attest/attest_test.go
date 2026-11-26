@@ -255,6 +255,11 @@ func TestStatementStrictness(t *testing.T) {
 	c := []byte("not a certificate")
 	wantErr(t, p, f, ad, bad(map[string]any{"alg": -7, "sig": []byte{1}, "x5c": [][]byte{c}}), attest.ErrCertificate)
 	wantErr(t, p, f, ad, bad(map[string]any{"alg": -7, "sig": []byte{1}, "x5c": [][]byte{c, c, c, c, c}}), attest.ErrMalformed)
+	// ParseStatement itself refuses a junk certificate, not only Verify.
+	_, _, _, perr := attest.ParseStatement(bad(map[string]any{"alg": -7, "sig": []byte{1}, "x5c": [][]byte{c}}))
+	if !errors.Is(perr, attest.ErrCertificate) {
+		t.Fatalf("ParseStatement accepted a junk certificate: %v", perr)
+	}
 	// Wrong algorithm in the statement.
 	_, _, st := make1(t, a)
 	_, _, chain, err := attest.ParseStatement(st)

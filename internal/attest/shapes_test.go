@@ -113,8 +113,8 @@ func TestLeafShapesAreRefused(t *testing.T) {
 		msg  string
 		set  func(a *fidotest.Authenticator)
 	}{
-		{"a CA", "a CA certificate", func(a *fidotest.Authenticator) { a.LeafCA = true }},
-		{"no basic constraints", "no basic constraints", func(a *fidotest.Authenticator) { a.LeafNoBasic = true }},
+		{"a CA", "Basic Constraints with CA false", func(a *fidotest.Authenticator) { a.LeafCA = true }},
+		{"no basic constraints", "Basic Constraints with CA false", func(a *fidotest.Authenticator) { a.LeafNoBasic = true }},
 		{"a critical AAGUID extension", "critical", func(a *fidotest.Authenticator) { a.LeafCritical = true }},
 		{"an extension that is not an octet string", "not an OCTET STRING", func(a *fidotest.Authenticator) { a.LeafExtValue = []byte{0xff} }},
 		{"an extension with trailing bytes", "not an OCTET STRING", func(a *fidotest.Authenticator) { a.LeafExtValue = append(octet(a), 0) }},
