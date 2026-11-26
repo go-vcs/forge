@@ -66,6 +66,8 @@ jobs:
       - run: go test -run '^$' -fuzz '^FuzzAttestationVerify$' -fuzztime 20s ./internal/attest
       - run: go test -run '^$' -fuzz '^FuzzParse$' -fuzztime 20s ./internal/sshkeys
       - run: go test -run '^$' -fuzz '^FuzzParseExec$' -fuzztime 20s ./internal/gitssh
+      - run: go test -run '^$' -fuzz '^FuzzParsePath$' -fuzztime 20s ./internal/githttp
+      - run: go test -run '^$' -fuzz '^FuzzRequest$' -fuzztime 20s ./internal/githttp
 
   # The toolchain is the one go.mod names, so a floor too low to carry the
   # standard library's fixes is a finding here: govulncheck exits 3 on any.

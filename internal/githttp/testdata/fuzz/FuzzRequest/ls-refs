@@ -1,0 +1,6 @@
+go test fuzz v1
+uint8(1)
+string("/alice/pub.git/git-upload-pack")
+string("")
+string("version=2")
+string("0014command=ls-refs\n0000")

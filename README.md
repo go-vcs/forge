@@ -10,7 +10,7 @@
 Light, secure Git forge: hosting, web UI, admin gRPC, Actions runners via GARM.
 
 Status: milestone 2. The admin gRPC API and its CLI, and read-only `git clone`
-and `git fetch` over SSH (protocol v2), are implemented; push, sign-in and the
+and `git fetch` over SSH and smart HTTP (protocol v2), are implemented; push, sign-in and the
 web UI are still design only. Read [docs/design.md](docs/design.md)
 for the goals, the security invariants, how the work is split between
 `go-vcs/forge`, `go-vcs/gitproto` and `go-vcs/actions`, and the milestones.
@@ -68,3 +68,20 @@ The host key is read from `--ssh-host-key` or the systemd credential
 `--git-timeout` per request, `--git-sessions` in total and
 `--git-sessions-per-account`, plus fixed caps on authentication tries,
 connections per host, request bytes and pkt-line count.
+
+## Clone and fetch over HTTPS
+
+```sh
+forge serve ... --http-listen :8444 --repos-root /srv/repos
+git clone https://forge.example:8444/alice/project.git
+```
+
+Anonymous and read-only: only repositories holding a `git-daemon-export-ok`
+file are served, over TLS 1.3 with the admin certificate. A request needs
+`Git-Protocol: version=2` (git 2.26 or later does that by default); protocol
+versions 0 and 1, the dumb protocol and push (`git-receive-pack`, milestone 4)
+are refused with a message that says so. A private and a missing repository
+both answer 404. Bounds: `--git-timeout` per request, `--git-sessions` in
+total and `--git-sessions-per-account` (per client address here), plus fixed
+caps on header size, body size (as sent and once decompressed), request
+bytes and pkt-line count. No credential is accepted in a URL.
