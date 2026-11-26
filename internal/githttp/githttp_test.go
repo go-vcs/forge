@@ -273,23 +273,17 @@ func TestGzipBombIsRefused(t *testing.T) {
 
 func TestSessionsAreBounded(t *testing.T) {
 	r := newRig(t, func(h *Handler) { h.Sessions = &gitrepo.Limiter{Total: 1, PerKey: 1} })
-	pr, pw := io.Pipe()
-	req, _ := http.NewRequest("POST", r.url+"/alice/pub.git/git-upload-pack", pr)
-	for k, v := range post(nil) {
-		req.Header.Set(k, v)
+	// The first session is open and waiting for the rest of its body. It is sent
+	// before any probe, so no probe can hold the slot when it arrives.
+	c, err := net.Dial("tcp", strings.TrimPrefix(r.url, "http://"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	done := make(chan error, 1)
-	go func() {
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			resp.Body.Close()
-		}
-		done <- err
-	}()
-	// the session is open and waiting for the rest; a server that does not read
-	// must fail this test, not hang it
-	go pw.Write([]byte(pkt("command=ls-refs\n")))
-	t.Cleanup(func() { pw.Close() })
+	defer c.Close()
+	first := pkt("command=ls-refs\n")
+	fmt.Fprintf(c, "POST /alice/pub.git/git-upload-pack HTTP/1.1\r\nHost: x\r\nGit-Protocol: version=2\r\n"+
+		"Content-Type: %s\r\nTransfer-Encoding: chunked\r\n\r\n%x\r\n%s\r\n", typeRequest, len(first), first)
+	time.Sleep(100 * time.Millisecond)
 	deadline := time.Now().Add(5 * time.Second)
 	var code int
 	var hdr http.Header
@@ -303,12 +297,7 @@ func TestSessionsAreBounded(t *testing.T) {
 	if code != http.StatusServiceUnavailable || hdr.Get("Retry-After") == "" {
 		t.Fatalf("a second session beside a full limiter: %d %v", code, hdr)
 	}
-	pw.Close()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the first request did not end")
-	}
+	c.Close() // the first session ends, and its slot is freed
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if code, _, _ = r.do(t, "GET", "/alice/pub.git/info/refs?service=git-upload-pack", v2, nil); code == 200 {
