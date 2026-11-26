@@ -1,7 +1,9 @@
 # Agent-oriented version control on top of git
 
-Status: design approved 2026-11-25 (see [Decisions](#decisions)). Nothing
-here is implemented. It extends
+Status: design approved 2026-11-25 (see [Decisions](#decisions)). Only the
+first slice of milestone A0 is implemented, in
+[go-vcs/agentd](https://github.com/go-vcs/agentd) v0.1.0 (see
+[Milestones](#milestones)); nothing else here is. It extends
 [design.md](design.md) and inherits all of its invariants; where this document
 and design.md disagree, design.md wins until this one is amended.
 
@@ -601,6 +603,18 @@ design.md's list after milestones 4 and 5:
   guarantees need the forge (the gate and the ref move as one step, enforced
   leases, change sets, signed commits) answer `UNSUPPORTED_BY_BACKEND`, never a
   weaker imitation. Benchmark row 6 (requests per hour) is its acceptance test.
+  *Status, 2026-11-26:* the first slice is implemented in
+  [go-vcs/agentd](https://github.com/go-vcs/agentd) (PR #1, merge commit
+  `0fec71d68fd0314889e55b1ec3147f6109c98692`, tag v0.1.0), a separate module
+  and binary (`forge-agentd`, `forge-agent`): the unix-socket protocol with
+  peer-uid checks, the file-held credential (0600), verdicts bound to the
+  exact full commit id (abbreviations refused, zero-job runs never green),
+  one poll loop per commit shared by all waiters, a gated merge, idempotent
+  writes by request id, structured errors, per-session identities, and bounds
+  with refusing tests. **Not done:** the verified object cache,
+  `Materialize`, a push event stream (the hub polls), the keychain
+  credential option, and benchmark row 6 has not been measured; leases,
+  changes and change sets answer `UNSUPPORTED_BY_BACKEND`.
 - **A1 (after 4).** Server side: `RepoService` reads; `CreateChange`,
   `UpdateChange`, `AbandonChange`, revision refs and trailers; server-signed
   commits; `UpdateRef` compare-and-swap on unprotected refs; `WriteHeader`
