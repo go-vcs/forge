@@ -6,10 +6,12 @@ package githttp
 
 import (
 	"bytes"
+	"context"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-vcs/forge/internal/gittest"
 )
@@ -17,7 +19,9 @@ import (
 // gitRun runs the real git client in dir; it returns its output and error.
 func gitRun(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
-	c := exec.Command("git", args...)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, "git", args...)
 	c.Dir = dir
 	c.Env = gittest.Env()
 	var b bytes.Buffer
