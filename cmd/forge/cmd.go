@@ -18,6 +18,8 @@ import (
 	"github.com/go-vcs/forge/internal/adminauth"
 	"github.com/go-vcs/forge/internal/adminsrv"
 	"github.com/go-vcs/forge/internal/attest"
+	"github.com/go-vcs/forge/internal/gitrepo"
+	"github.com/go-vcs/forge/internal/gitssh"
 	"github.com/go-vcs/forge/internal/store"
 )
 
@@ -57,6 +59,11 @@ func RootCmd() *cobra.Command {
 type serveConfig struct {
 	db, adminListen, tlsCert, tlsKey, enrolSocket, rpID, mdsBlob string
 	aaguids                                                      []string
+
+	// git transports (milestone 2): off unless --ssh-listen is given
+	sshListen, sshHostKey, reposRoot, gitBin string
+	gitTimeout                               time.Duration
+	gitSessions, gitSessionsPerAccount       int
 }
 
 func serveCmd() *cobra.Command {
@@ -86,6 +93,13 @@ arguments, the environment or a URL.`,
 	f.StringVar(&c.rpID, "rp-id", "", "WebAuthn relying party `id` the keys are bound to (required)")
 	f.StringArrayVar(&c.aaguids, "aaguid", nil, "allowed authenticator model `AAGUID` (repeatable, at least one)")
 	f.StringVar(&c.mdsBlob, "mds-blob", "", "FIDO MDS3 blob `file`, verified at start (required)")
+	f.StringVar(&c.sshListen, "ssh-listen", "", "serve git clone and fetch over SSH on this `address` (off when empty)")
+	f.StringVar(&c.sshHostKey, "ssh-host-key", "", "SSH host key `file`, an ed25519 OpenSSH private key, mode 0600, never generated (default: systemd credential ssh_host_key)")
+	f.StringVar(&c.reposRoot, "repos-root", "", "`directory` holding <owner>/<name>.git bare repositories (required with --ssh-listen)")
+	f.StringVar(&c.gitBin, "git", "", "git `executable` (default: git on PATH)")
+	f.DurationVar(&c.gitTimeout, "git-timeout", gitrepo.DefaultRequestDuration, "longest a git session may last")
+	f.IntVar(&c.gitSessions, "git-sessions", gitrepo.DefaultTotalSessions, "most git sessions at once, in total")
+	f.IntVar(&c.gitSessionsPerAccount, "git-sessions-per-account", gitrepo.DefaultSessionsPerKey, "most git sessions at once for one account")
 	return cmd
 }
 
@@ -112,6 +126,14 @@ func (c serveConfig) validate() error {
 	}
 	if len(c.aaguids) == 0 {
 		return errors.New("at least one --aaguid is required: enrolment has no \"accept any key\" mode")
+	}
+	if c.sshListen != "" {
+		if c.reposRoot == "" {
+			return errors.New("--repos-root is required with --ssh-listen")
+		}
+		if c.gitSessions < 1 || c.gitSessionsPerAccount < 1 || c.gitTimeout <= 0 {
+			return errors.New("--git-sessions, --git-sessions-per-account and --git-timeout must be positive")
+		}
 	}
 	return nil
 }
@@ -165,6 +187,13 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	}
 	enrolSrv := adminsrv.NewEnrolServer(&adminsrv.Enrol{Store: st, Policy: policy, RPID: c.rpID, Log: log})
 
+	var sshSrv *gitssh.Server
+	if c.sshListen != "" {
+		if sshSrv, err = newSSHServer(c, st, log); err != nil {
+			return err
+		}
+	}
+
 	adminLn, err := net.Listen("tcp", c.adminListen)
 	if err != nil {
 		return err
@@ -174,14 +203,31 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		adminLn.Close()
 		return err
 	}
+	var sshLn net.Listener
+	if sshSrv != nil {
+		if sshLn, err = net.Listen("tcp", c.sshListen); err != nil {
+			adminLn.Close()
+			enrolLn.Close()
+			return err
+		}
+	}
 	out := &syncWriter{w: stdout}
 	fmt.Fprintf(out, "admin listening on %s\n", adminLn.Addr())
 	fmt.Fprintf(out, "enrolment listening on %s\n", c.enrolSocket)
 
-	errc := make(chan error, 2)
+	errc := make(chan error, 3)
 	run := func(s *grpc.Server, ln net.Listener) { errc <- s.Serve(ln) }
 	go run(adminSrv, adminsrv.LimitListener(adminLn, adminsrv.MaxConns, adminsrv.MaxConnsPerHost))
 	go run(enrolSrv, enrolLn)
+	sshCtx, stopSSH := context.WithCancel(ctx)
+	defer stopSSH()
+	sshDone := make(chan struct{})
+	if sshSrv != nil {
+		fmt.Fprintf(out, "git over SSH listening on %s\n", sshLn.Addr())
+		go func() { defer close(sshDone); errc <- sshSrv.Serve(sshCtx, sshLn) }()
+	} else {
+		close(sshDone)
+	}
 
 	var first error
 	select {
@@ -190,5 +236,32 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	}
 	adminSrv.GracefulStop()
 	enrolSrv.GracefulStop()
+	stopSSH()
+	<-sshDone
 	return first
+}
+
+// newSSHServer builds the git-over-SSH server: the host key must exist (it is
+// never generated here), the repositories root must be a directory.
+func newSSHServer(c serveConfig, st *store.Store, log *slog.Logger) (*gitssh.Server, error) {
+	keyPath, err := adminsrv.ResolveFile(c.sshHostKey, "ssh_host_key")
+	if err != nil {
+		return nil, fmt.Errorf("--ssh-host-key: %w", err)
+	}
+	hostKey, err := gitssh.LoadHostKey(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	repos := &gitrepo.Service{Root: c.reposRoot, Git: c.gitBin}
+	if err := repos.Validate(); err != nil {
+		return nil, err
+	}
+	return &gitssh.Server{
+		Auth:           st,
+		Repos:          repos,
+		Sessions:       &gitrepo.Limiter{Total: c.gitSessions, PerKey: c.gitSessionsPerAccount},
+		HostKey:        hostKey,
+		Log:            log,
+		RequestTimeout: c.gitTimeout,
+	}, nil
 }

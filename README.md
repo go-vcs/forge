@@ -9,8 +9,9 @@
 
 Light, secure Git forge: hosting, web UI, admin gRPC, Actions runners via GARM.
 
-Status: milestone 2a. The admin gRPC API and its CLI are implemented; hosting,
-sign-in and the web UI are still design only. Read [docs/design.md](docs/design.md)
+Status: milestone 2. The admin gRPC API and its CLI, and read-only `git clone`
+and `git fetch` over SSH (protocol v2), are implemented; push, sign-in and the
+web UI are still design only. Read [docs/design.md](docs/design.md)
 for the goals, the security invariants, how the work is split between
 `go-vcs/forge`, `go-vcs/gitproto` and `go-vcs/actions`, and the milestones.
 
@@ -47,3 +48,23 @@ secret is accepted on the command line, in the environment or in a URL.
 Enrolment is possible only over the Unix socket, and only for a key whose
 attestation chains to the FIDO MDS3 blob (verified at start) and whose AAGUID is
 on the allowlist; there is no switch to relax either.
+
+## Clone and fetch over SSH
+
+```sh
+ssh-keygen -t ed25519 -N '' -f ssh_host_key        # the host key is never generated
+forge serve ... --ssh-listen :2222 --ssh-host-key ssh_host_key --repos-root /srv/repos
+git clone ssh://git@forge.example:2222/alice/project.git
+```
+
+Repositories are bare, at `<repos-root>/<owner>/<name>.git`. A user
+authenticates with a public key registered through the admin API; only
+`git-upload-pack` runs (no shell, pty, forwarding or agent), and only with
+protocol v2. Push is refused with a message naming milestone 4. A reader must
+own the repository, or the repository must contain a `git-daemon-export-ok`
+file; a missing and a forbidden repository answer alike. There is no ACL yet.
+The host key is read from `--ssh-host-key` or the systemd credential
+`ssh_host_key` (ed25519, no passphrase, owner-only permissions). Bounds:
+`--git-timeout` per request, `--git-sessions` in total and
+`--git-sessions-per-account`, plus fixed caps on authentication tries,
+connections per host, request bytes and pkt-line count.

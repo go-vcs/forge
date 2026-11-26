@@ -1,7 +1,8 @@
 # go-vcs design
 
-Status: draft, 2026-11-25. Milestone 2a (admin gRPC API and CLI, see
-[admin-api.md](admin-api.md)) is implemented; the rest is not.
+Status: draft, 2026-11-26. Milestone 2 (admin gRPC API and CLI, see
+[admin-api.md](admin-api.md); clone and fetch over SSH) is implemented; smart
+HTTP and the rest are not.
 
 ## Why
 
@@ -142,7 +143,18 @@ milestone.
    `fetch` serving from an existing repository; fuzzers; benchmark vs
    `git upload-pack`.
 2. `forge`: storage layout, accounts, admin gRPC API with FIDO2 assertions and
-   its CLI; SSH and HTTP clone.
+   its CLI; SSH and HTTP clone. Done for SSH (HTTP next): fetch is protocol v2 only, read only
+   (`git-upload-pack`); push is refused with a message naming milestone 4.
+   Repositories live at `<repos-root>/<owner>/<name>.git`; a reader must be the
+   owner, or the repository must hold a `git-daemon-export-ok` file (anonymous
+   read over HTTP is public repositories only). A missing and a forbidden
+   repository give the same answer, so existence is not an oracle (this departs
+   from the 403 that gitprotocol-http asks for). There is no ACL yet.
+   SSH: public-key authentication through the per-user keys of the admin API,
+   `git-upload-pack` exec only (no shell, pty, forwarding or agent), a host key
+   read from a file and never generated. Each transport bounds the request
+   size, the pkt-line count, the time per request, and the concurrent sessions
+   per account and in total.
 3. `forge`: OIDC sign-in through the bridge, read-only web UI (tree, blob,
    commits, diff).
 4. `gitproto` + `forge`: receive-pack with in-process push policy.

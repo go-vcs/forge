@@ -75,6 +75,11 @@ func LoadTLS(certFile, keyFile string) (tls.Certificate, error) {
 	return tls.X509KeyPair(cert, key)
 }
 
+// ReadSecretFile reads a secret file under the checks of readSecretFile: a
+// regular file, not a symbolic link, owned by this user, closed to group and
+// others, at most 1 MiB.
+func ReadSecretFile(path string) ([]byte, error) { return readSecretFile(path) }
+
 // CredentialsEnv names the systemd credentials directory variable.
 const CredentialsEnv = "CREDENTIALS_DIRECTORY"
 
