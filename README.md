@@ -90,3 +90,46 @@ both answer 404. Bounds: `--git-timeout` per request, `--git-sessions` in
 total and `--git-sessions-per-account` (per client address here), plus fixed
 caps on header size, body size (as sent and once decompressed), request
 bytes and pkt-line count. No credential is accepted in a URL.
+
+## Sign-in with OIDC
+
+Web sign-in goes only through the go-authn bridge (OIDC); the forge has no
+passwords. The administrator registers the forge as a client of the bridge:
+
+```sh
+forgectl --server forge.example:8443 --rp-id forge.example --credential-id <hex> \
+    oidc set-client --issuer https://login.example --client-id forge \
+    --redirect-uri https://forge.example:8445/callback   # secret: no-echo prompt
+forgectl ... oidc show                                        # never prints the secret
+forge serve ... --web-listen :8445 --secrets-key secrets.key
+```
+
+- **Who may sign in.** Only an account that the administrator has bound to an
+  identity with `forgectl identities bind <issuer> <subject> <login>`. The key
+  is the pair `(iss, sub)`: a sign-in never creates an account, never links an
+  identity to a session that exists, and never reads an e-mail address or a
+  username. Every refusal is the same 403 page. `--public` registers a client
+  without a secret (PKCE only).
+- **The client secret** is sealed with AES-256-GCM before it is stored, with a
+  key from `--secrets-key` (mode 0600) or the systemd credential `secrets.key`;
+  without a key a secret is refused, never stored in clear. It is read from a
+  no-echo prompt or `--secret-fd`, never from argv, the environment or a URL,
+  and it is never returned.
+- **The flow** is the authorization code with PKCE S256, state, nonce and the
+  RFC 9207 issuer check, over TLS 1.3 only.
+- **Sessions** are server side. The cookie is `__Host-` prefixed, Secure,
+  HttpOnly and SameSite=Lax, and only its SHA-256 is stored. A session ends
+  after 30 minutes idle or 12 hours of age, and with the account or its binding.
+
+## Read-only web UI
+
+With `--web-listen` and `--repos-root`, the web listener shows, for each
+repository the viewer may read, the home page, the tree, a blob, the raw file,
+the commit log and a commit with its diff. A repository is visible to its
+owner, or to anyone when it holds `git-daemon-export-ok`; any other repository,
+and any missing one, answers 404. Nothing can be changed from the web. Every
+response carries a strict CSP (no inline script or style), `nosniff`,
+`no-referrer` and HSTS; names, paths, refs, commit text and diff lines are
+escaped, and raw files are never served as a renderable type. Every git command
+runs with a deadline, a bounded output and bounded concurrency, and the path,
+ref and page parsers are fuzzed.
