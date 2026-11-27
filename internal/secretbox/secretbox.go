@@ -40,8 +40,15 @@ func New(key []byte) (*Box, error) {
 // randRead is replaced by a test: the system generator does not fail.
 var randRead = rand.Read
 
-// Seal returns nonce || ciphertext, bound to purpose.
+// ErrNoKey is what a nil Box answers: a server started without a secrets key
+// seals nothing, so nothing is ever stored in clear.
+var ErrNoKey = errors.New("secretbox: no secrets key")
+
+// Seal returns nonce || ciphertext, bound to purpose. A nil Box refuses.
 func (b *Box) Seal(plain []byte, purpose string) ([]byte, error) {
+	if b == nil {
+		return nil, ErrNoKey
+	}
 	n := make([]byte, b.aead.NonceSize(), b.aead.NonceSize()+len(plain)+b.aead.Overhead())
 	if _, err := randRead(n); err != nil {
 		return nil, err

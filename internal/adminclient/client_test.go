@@ -110,6 +110,13 @@ func (f *fakeForge) RemoveSSHKey(_ context.Context, r *adminv1.RemoveSSHKeyReque
 	return &adminv1.RemoveSSHKeyResponse{}, nil
 }
 
+func (f *fakeForge) SetOIDCClient(_ context.Context, r *adminv1.SetOIDCClientRequest) (*adminv1.SetOIDCClientResponse, error) {
+	if err := f.seen(r.Envelope); err != nil {
+		return nil, err
+	}
+	return &adminv1.SetOIDCClientResponse{}, nil
+}
+
 func (f *fakeForge) SetPolicy(_ context.Context, r *adminv1.SetPolicyRequest) (*adminv1.SetPolicyResponse, error) {
 	if err := f.seen(r.Envelope); err != nil {
 		return nil, err
@@ -355,6 +362,9 @@ func TestSignedCalls(t *testing.T) {
 		},
 		"RemoveSSHKey": func(c *adminclient.Client) (any, error) {
 			return nil, c.RemoveSSHKey(context.Background(), "SHA256:k")
+		},
+		"SetOIDCClient": func(c *adminclient.Client) (any, error) {
+			return nil, c.SetOIDCClient(context.Background(), "https://i", "forge", "https://f/cb", []byte("s"))
 		},
 		"SetPolicy": func(c *adminclient.Client) (any, error) {
 			return nil, c.SetPolicy(context.Background(), &adminv1.Policy{RequireSkSshKeys: true})

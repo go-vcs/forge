@@ -9,6 +9,7 @@ package adminsrv_test
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -114,4 +115,47 @@ func TestOIDCClientRefusals(t *testing.T) {
 	tok, _ := c.OpenSession(ctx)
 	_, err := c.Admin.GetOIDCClient(ctx, &adminv1.GetOIDCClientRequest{SessionToken: tok})
 	wantStatus(t, "storage", err, codes.Internal, "internal error")
+}
+
+func TestOIDCCallsRefuseWithoutAProperEnvelope(t *testing.T) {
+	f := newForge(t)
+	f.mustEnrol()
+	c := f.dial()
+	ctx := t.Context()
+	// an envelope signed for another method is refused as unauthenticated
+	env := f.envelope(c, createMethod, &adminv1.SetOIDCClientParams{Issuer: issuer, ClientId: "forge", RedirectUri: cbURL}, tweak{})
+	if _, err := c.Admin.SetOIDCClient(ctx, &adminv1.SetOIDCClientRequest{Envelope: env}); code(err) != codes.Unauthenticated {
+		t.Fatalf("envelope signed for CreateUser accepted: %v", err)
+	}
+	// unparseable parameters are refused as such
+	env = f.envelope(c, adminv1.AdminService_SetOIDCClient_FullMethodName, nil, tweak{rawReq: []byte{0xff, 0xff}})
+	_, err := c.Admin.SetOIDCClient(ctx, &adminv1.SetOIDCClientRequest{Envelope: env})
+	wantStatus(t, "bad parameters", err, codes.InvalidArgument, "bad parameters")
+	tok, _ := c.OpenSession(ctx)
+	if r, err := c.Admin.GetOIDCClient(ctx, &adminv1.GetOIDCClientRequest{SessionToken: tok}); err != nil || r.Client != nil {
+		t.Fatalf("a refused call registered a client: %v %v", r, err)
+	}
+}
+
+func TestSealStatusAndNilBox(t *testing.T) {
+	wantStatus(t, "no key", adminsrv.SealStatus(secretbox.ErrNoKey), codes.FailedPrecondition, "secrets key")
+	wantStatus(t, "other", adminsrv.SealStatus(errors.New("entropy")), codes.Internal, "internal error")
+	if _, err := (*secretbox.Box)(nil).Seal([]byte("x"), "p"); !errors.Is(err, secretbox.ErrNoKey) {
+		t.Fatalf("nil box = %v", err)
+	}
+}
+
+// A call refused before it is authorized writes no outcome row, and does not panic.
+func TestFinishWithoutAnAct(t *testing.T) {
+	f := newForge(t)
+	before, _ := f.st.AuditCount(t.Context())
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("finish panicked: %v", r)
+		}
+	}()
+	f.adm.Finish(t.Context(), errors.New("refused"))
+	if after, _ := f.st.AuditCount(t.Context()); after != before {
+		t.Fatalf("audit rows %d -> %d", before, after)
+	}
 }

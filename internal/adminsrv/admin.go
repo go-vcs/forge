@@ -85,6 +85,9 @@ type act struct {
 // write this one is logged and does not change what the caller is told: the
 // action has run.
 func (a *Admin) finish(ctx context.Context, x *act, err error) {
+	if x == nil { // the call was refused before it was authorized: no attempt row, no outcome row
+		return
+	}
 	outcome := store.OutcomeSuccess
 	if err != nil {
 		outcome = store.OutcomeFailure
