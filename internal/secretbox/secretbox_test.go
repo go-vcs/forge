@@ -13,9 +13,16 @@ import (
 
 func TestRoundTripAndRefusals(t *testing.T) {
 	for _, n := range []int{0, 16, 31, 33, 64} {
-		if _, err := secretbox.New(make([]byte, n)); err == nil {
-			t.Fatalf("key of %d bytes accepted", n)
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("a %d-byte key panicked: %v", n, r)
+				}
+			}()
+			if _, err := secretbox.New(make([]byte, n)); err == nil {
+				t.Errorf("key of %d bytes accepted", n)
+			}
+		}()
 	}
 	b, err := secretbox.New(bytes.Repeat([]byte{9}, 32))
 	if err != nil {
