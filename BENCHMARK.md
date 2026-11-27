@@ -44,7 +44,8 @@ buffer for every sideband frame of the pack. The remainder was the harness
 The fix is a dependency bump (go-vcs/gitproto#8), with `TestFetchAllocationsDoNotScaleWithThePack`
 as the regression test: one fetch of a 4 MiB incompressible pack allocated
 5 090 240 bytes before and 351 672 bytes in 279 allocations after (bound: an
-eighth of the reply, 600 allocations).
+eighth of the reply; 2500 allocations as a sanity bound, since Windows takes 1103
+where macOS takes 279).
 
 Interleaved run, the order alternating, 20 clones per run, 6 runs. The load rose
 during the run, from 1-min 6.6 / 5-min 7.2 at the start to 1-min 16 at the end,

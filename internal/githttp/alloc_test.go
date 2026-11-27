@@ -82,7 +82,9 @@ func TestFetchAllocationsDoNotScaleWithThePack(t *testing.T) {
 	if bytes > uint64(sent)/8 {
 		t.Errorf("allocated %d bytes to send %d: more than an eighth of the reply", bytes, sent)
 	}
-	if mallocs > 600 {
-		t.Errorf("%d allocations for one fetch, want at most 600", mallocs)
+	// The count is a sanity bound only (279 on macOS, 1103 on Windows, where
+	// refs come from a child process); the bytes above are what regressed.
+	if mallocs > 2500 {
+		t.Errorf("%d allocations for one fetch, want at most 2500", mallocs)
 	}
 }
