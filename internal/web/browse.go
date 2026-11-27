@@ -107,7 +107,7 @@ func (s *Server) browse(h func(c *call)) http.HandlerFunc {
 		}
 		v.Owner, v.Repo, v.Base = n.Owner, n.Repo, "/"+n.Owner+"/"+n.Repo
 		v.Title = n.String()
-		h(&call{s: s, w: w, r: r, repo: &gitview.Repo{Dir: dir, Git: s.Repos.Git}, v: v})
+		h(&call{s: s, w: w, r: r, repo: &gitview.Repo{Dir: dir, Git: s.Repos.Git, Timeout: s.GitTimeout}, v: v})
 	}
 }
 
@@ -286,11 +286,13 @@ func (s *Server) rawPage(c *call) {
 		return
 	}
 	ctx := c.r.Context()
-	if p == "" {
-		c.err(gitview.ErrNotFound)
+	// An empty path is the commit's own tree: not a blob.
+	k, err := c.repo.Kind(ctx, oid, p)
+	if err != nil {
+		c.err(err)
 		return
 	}
-	if k, err := c.repo.Kind(ctx, oid, p); err != nil || k != "blob" {
+	if k != "blob" {
 		c.err(gitview.ErrNotFound)
 		return
 	}

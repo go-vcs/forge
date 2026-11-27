@@ -87,6 +87,8 @@ type Server struct {
 	// Limiter caps the repository pages at once, in total and per reader
 	// (nil: no cap).
 	Limiter *gitrepo.Limiter
+	// GitTimeout bounds one git command of a page (0: gitview.DefaultTimeout).
+	GitTimeout time.Duration
 
 	mu     sync.Mutex
 	client cachedClient

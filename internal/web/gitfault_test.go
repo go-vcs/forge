@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-vcs/forge/internal/gitrepo"
 	"github.com/go-vcs/forge/internal/gitview"
@@ -61,6 +62,10 @@ func fakeGit() {
 					fmt.Print("not an object id\n")
 				case "big":
 					fmt.Print(strings.Repeat("a", gitview.MaxRaw+10))
+				case "text":
+					fmt.Print("hello\n")
+				case "hang":
+					time.Sleep(time.Minute)
 				case "huge":
 					fmt.Print("99999999999\n")
 				}
@@ -93,6 +98,12 @@ func TestBrowseGitFailures(t *testing.T) {
 		s.Repos = &gitrepo.Service{Root: r.root, Git: exe}
 		s.Limiter = &gitrepo.Limiter{Total: 64, PerKey: 64}
 	})
+	// a command that does not answer in time is a 504, whichever page waits
+	slow := newEnv(t, func(s *web.Server) {
+		s.Repos = &gitrepo.Service{Root: r.root, Git: exe}
+		s.Limiter = &gitrepo.Limiter{Total: 64, PerKey: 64}
+		s.GitTimeout = 3 * time.Second
+	})
 	r.commit(t, "dir", map[string][]byte{"d/x.txt": []byte("x\n")})
 	c := e.anon()
 	base := e.ts.URL + "/alice/pub"
@@ -120,6 +131,8 @@ func TestBrowseGitFailures(t *testing.T) {
 		{"cat-file blob exit", "/raw/main/f.txt", 404},
 		{"cat-file -s huge", "/raw/main/f.txt", 413},
 		{"cat-file blob big", "/raw/main/f.txt", 413},
+		// only the kind of the object decides that a directory is no file
+		{"cat-file blob text", "/raw/main/d", 404},
 		{"log exit", "/commits/main", 404},
 		{"show exit", "/commit/" + sha, 404},
 	}
@@ -131,6 +144,15 @@ func TestBrowseGitFailures(t *testing.T) {
 		}
 		if n := strings.Count(b, "</html>"); n != 1 {
 			t.Errorf("%q on %q: %d pages in one response", tc.fault, tc.url, n)
+		}
+	}
+	for _, tc := range []struct{ fault, url string }{
+		{"rev-parse hang", ""}, {"rev-parse hang", "/tree/main/d"}, {"rev-parse hang", "/commits/main"},
+		{"cat-file -t hang", "/raw/main/f.txt"},
+	} {
+		r.fault(t, tc.fault)
+		if code, _, _ := fetch(t, slow.anon(), slow.ts.URL+"/alice/pub"+tc.url); code != http.StatusGatewayTimeout {
+			t.Errorf("%q on %q: %d, want 504", tc.fault, tc.url, code)
 		}
 	}
 	r.fault(t, "rev-parse exit")
