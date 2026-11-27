@@ -41,7 +41,7 @@ buffer for every sideband frame of the pack. The remainder was the harness
 
 ## After: gitproto 4952844 (reused sideband frame buffer, packed-refs read in one block)
 
-The fix is a dependency bump, forge#NN, with `TestFetchAllocationsDoNotScaleWithThePack`
+The fix is a dependency bump (go-vcs/gitproto#8), with `TestFetchAllocationsDoNotScaleWithThePack`
 as the regression test: one fetch of a 4 MiB incompressible pack allocated
 5 090 240 bytes before and 351 672 bytes in 279 allocations after (bound: an
 eighth of the reply, 600 allocations).
