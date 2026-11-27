@@ -114,7 +114,7 @@ func oidcCmd(o *options) *cobra.Command {
 	f := set.Flags()
 	f.StringVar(&issuer, "issuer", "", "bridge issuer `URL` (https)")
 	f.StringVar(&clientID, "client-id", "", "client `id`")
-	f.StringVar(&redirectURI, "redirect-uri", "", "the forge's callback `URL`, https://<forge>/auth/callback")
+	f.StringVar(&redirectURI, "redirect-uri", "", "the forge's callback `URL`, https://<forge>/callback")
 	f.IntVar(&secretFD, "secret-fd", 0, "read the secret from this inherited file descriptor (3 or above)")
 	f.BoolVar(&public, "public", false, "a public client: no secret, PKCE only")
 	for _, n := range []string{"issuer", "client-id", "redirect-uri"} {
