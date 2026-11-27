@@ -40,6 +40,10 @@ import (
 	"github.com/go-vcs/forge/internal/store"
 )
 
+// CallbackPath is where the identity bridge returns the browser. The redirect
+// URI registered with `forgectl oidc set-client` must end with it.
+const CallbackPath = "/callback"
+
 // Cookie names. The __Host- prefix makes a browser accept the cookie only with
 // Secure, Path=/ and no Domain (RFC 6265bis §4.1.3.2), so a sibling host cannot
 // plant one.
@@ -128,7 +132,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.home)
 	mux.HandleFunc("GET /login", s.login)
-	mux.HandleFunc("GET /callback", s.callback)
+	mux.HandleFunc("GET "+CallbackPath, s.callback)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /static/style.css", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")

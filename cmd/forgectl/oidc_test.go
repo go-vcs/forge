@@ -17,7 +17,25 @@ import (
 
 	"github.com/go-vcs/forge/internal/secretbox"
 	"github.com/go-vcs/forge/internal/store"
+	"github.com/go-vcs/forge/internal/web"
 )
+
+// The help text names the path the router serves: a registration made from it
+// must reach the callback.
+func TestRedirectURIHelpNamesTheRoutersCallback(t *testing.T) {
+	r := newRig(t)
+	out, err := r.admin("oidc", "set-client", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "https://<forge>" + web.CallbackPath
+	if !strings.Contains(out, want) {
+		t.Fatalf("help does not say %q:\n%s", want, out)
+	}
+	if strings.Contains(out, "/auth/callback") {
+		t.Fatalf("help still names /auth/callback:\n%s", out)
+	}
+}
 
 func testBox(t *testing.T) *secretbox.Box {
 	t.Helper()
