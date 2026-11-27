@@ -1,0 +1,6 @@
+{{template "top" .}}
+<table>
+{{range .Commits}}<tr><td><a href="{{.Href}}">{{.Subject}}</a></td><td class="meta">{{.Author}}</td><td class="meta">{{.Date}}</td></tr>
+{{end}}</table>
+<p>{{if .Newer}}<a href="{{.Newer}}">Newer</a> {{end}}{{if .Older}}<a href="{{.Older}}">Older</a>{{end}}</p>
+{{template "bottom" .}}

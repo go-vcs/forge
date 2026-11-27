@@ -35,6 +35,7 @@ import (
 	"github.com/go-authn/harden/redirect"
 	"github.com/go-authn/rp"
 
+	"github.com/go-vcs/forge/internal/gitrepo"
 	"github.com/go-vcs/forge/internal/secretbox"
 	"github.com/go-vcs/forge/internal/store"
 )
@@ -81,6 +82,13 @@ type Server struct {
 	Now func() time.Time
 	// Zero fields mean the defaults.
 	Idle, Abs, FlowTTL time.Duration
+	// Repos serves the repository pages (nil: there are none).
+	Repos *gitrepo.Service
+	// Limiter caps the repository pages at once, in total and per reader
+	// (nil: no cap).
+	Limiter *gitrepo.Limiter
+	// GitTimeout bounds one git command of a page (0: gitview.DefaultTimeout).
+	GitTimeout time.Duration
 
 	mu     sync.Mutex
 	client cachedClient
@@ -127,6 +135,7 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		_, _ = w.Write(css)
 	})
+	s.routes(mux)
 	return secure(mux)
 }
 

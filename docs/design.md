@@ -1,8 +1,10 @@
 # go-vcs design
 
-Status: draft, 2026-11-26. Milestone 2 (admin gRPC API and CLI, see
-[admin-api.md](admin-api.md); clone and fetch over SSH and smart HTTP) is
-implemented; the rest is not.
+Status: draft, 2026-11-26. Milestones 2 (admin gRPC API and CLI, see
+[admin-api.md](admin-api.md); clone and fetch over SSH and smart HTTP) and 3
+(OIDC sign-in and the read-only web UI: tree, blob, raw, commits, commit
+diff, behind `--web-listen` and `--repos-root`) are implemented; the rest is
+not.
 
 ## Why
 

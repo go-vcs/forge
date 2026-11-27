@@ -34,6 +34,22 @@ func TestWebPortInUseStopsTheOthers(t *testing.T) {
 	}
 }
 
+// A repositories root the web pages cannot use stops serve before anything
+// listens.
+func TestWebReposRootAbsent(t *testing.T) {
+	restoreRoots(t)
+	a := fidotest.New(fidotest.YubiKeyBioAAGUID)
+	stubRoots(a)
+	args, _, _ := baseArgs(t, a, 0o600)
+	args = append(args, "--web-listen", "127.0.0.1:0", "--repos-root", t.TempDir()+"/nope")
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	_, _, err := run(t, ctx, args)
+	if err == nil || ctx.Err() != nil || !strings.Contains(err.Error(), "repositories root") {
+		t.Fatalf("an absent repositories root: err = %v (ctx %v)", err, ctx.Err())
+	}
+}
+
 // The web listener speaks TLS 1.3 only, serves the sign-in page and the
 // security headers, and stops cleanly.
 func TestServeWeb(t *testing.T) {

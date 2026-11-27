@@ -1,0 +1,7 @@
+{{template "top" .}}
+<p class="meta">{{.Commit.Author}}, {{.Commit.Date}}<br>commit {{.ID}}
+{{range .Parents}}<br>parent <a href="{{.Href}}">{{.Name}}</a>{{end}}</p>
+<pre>{{.Message}}</pre>
+<pre class="diff">{{range .Diff}}<span class="{{.Class}}">{{.Text}}</span>{{end}}</pre>
+{{if .Truncated}}<p class="meta">The diff is cut: it is larger than a page shows.</p>{{end}}
+{{template "bottom" .}}
