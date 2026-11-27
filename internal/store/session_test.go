@@ -325,6 +325,23 @@ func TestSessionStatementFailuresAreReported(t *testing.T) {
 			t.Errorf("%d sessions after a failed create, want the 16 there were (rolled back)", n)
 		}
 	})
+	// the sessions' deletion fails: the disable / unbind is rolled back with it
+	t.Run("disable", func(t *testing.T) {
+		s := damaged(t, account+fmt.Sprintf(row, now, now)+deny("DELETE"))
+		wantErr(t, "DisableUser", s.DisableUser(ctx, "alice"), "denied")
+		us, err := s.ListUsers(ctx)
+		if err != nil || len(us) != 1 || !us[0].DisabledAt.IsZero() {
+			t.Errorf("the account was disabled although its sessions stayed: %+v %v", us, err)
+		}
+	})
+	t.Run("unbind", func(t *testing.T) {
+		s := damaged(t, account+fmt.Sprintf(row, now, now)+deny("DELETE"))
+		wantErr(t, "UnbindIdentity", s.UnbindIdentity(ctx, sessIss, "a"), "denied")
+		ids, err := s.ListIdentities(ctx, "alice")
+		if err != nil || len(ids) != 1 {
+			t.Errorf("the binding was removed although its sessions stayed: %+v %v", ids, err)
+		}
+	})
 	t.Run("lookup select", func(t *testing.T) {
 		s := damaged(t, `DROP TABLE identities;`)
 		_, err := s.LookupSession(ctx, idh("n"), sessIdle, sessAbs)

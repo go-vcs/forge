@@ -381,23 +381,19 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 
 // DisableUser disables an enabled user.
 func (s *Store) DisableUser(ctx context.Context, login string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE users SET disabled_at = ? WHERE login = ? AND disabled_at IS NULL`, s.now().Unix(), login)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n != 1 {
+				err = ErrNotFound
+			}
+		}
+		if err == nil {
+			// the web sessions of a disabled account end with it
+			_, err = tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id = (SELECT id FROM users WHERE login = ?)`, login)
+		}
 		return err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE users SET disabled_at = ? WHERE login = ? AND disabled_at IS NULL`, s.now().Unix(), login)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return ErrNotFound
-	}
-	// the web sessions of a disabled account end with it
-	if _, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id = (SELECT id FROM users WHERE login = ?)`, login); err != nil {
-		return err
-	}
-	return tx.Commit()
+	})
 }
 
 // ---- identities ----
@@ -484,23 +480,19 @@ func (s *Store) ListIdentities(ctx context.Context, login string) ([]Identity, e
 
 // UnbindIdentity removes a binding.
 func (s *Store) UnbindIdentity(ctx context.Context, issuer, subject string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM identities WHERE issuer = ? AND subject = ?`, issuer, subject)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n != 1 {
+				err = ErrNotFound
+			}
+		}
+		if err == nil {
+			// the sessions that identity opened end with the binding
+			_, err = tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE issuer = ? AND subject = ?`, issuer, subject)
+		}
 		return err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `DELETE FROM identities WHERE issuer = ? AND subject = ?`, issuer, subject)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return ErrNotFound
-	}
-	// the sessions that identity opened end with the binding
-	if _, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE issuer = ? AND subject = ?`, issuer, subject); err != nil {
-		return err
-	}
-	return tx.Commit()
+	})
 }
 
 // ---- audit ----
