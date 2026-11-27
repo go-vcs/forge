@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-vcs/forge/internal/adminsrv"
@@ -39,11 +40,12 @@ func TestLoadSealer(t *testing.T) {
 	if err := os.WriteFile(open, bytes.Repeat([]byte{5}, 32), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadSealer(open); err == nil {
-		t.Fatal("a world-readable key was accepted")
+	// refused when READ, not merely when its content is judged
+	if _, err := loadSealer(open); err == nil || strings.Contains(err.Error(), "secrets key ") {
+		t.Fatalf("a world-readable key = %v", err)
 	}
-	if _, err := loadSealer(filepath.Join(dir, "absent")); err == nil {
-		t.Fatal("a missing key file was accepted")
+	if _, err := loadSealer(filepath.Join(dir, "absent")); err == nil || strings.Contains(err.Error(), "secrets key ") {
+		t.Fatalf("a missing key file = %v", err)
 	}
 	// a credentials directory with the credential, and without it
 	cred := t.TempDir()

@@ -6,10 +6,22 @@ package secretbox_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/go-vcs/forge/internal/secretbox"
 )
+
+func TestNilBoxSealRefuses(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("a nil box panicked: %v", r)
+		}
+	}()
+	if _, err := (*secretbox.Box)(nil).Seal([]byte("x"), "p"); !errors.Is(err, secretbox.ErrNoKey) {
+		t.Fatalf("nil box = %v", err)
+	}
+}
 
 func TestRoundTripAndRefusals(t *testing.T) {
 	for _, n := range []int{0, 16, 31, 33, 64} {

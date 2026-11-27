@@ -152,6 +152,7 @@ func TestServeRefusals(t *testing.T) {
 		{"no aaguid", func(a []string) []string { return drop(a, "--aaguid") }, "at least one --aaguid"},
 		{"bad aaguid", func(a []string) []string { return append(drop(a, "--aaguid"), "--aaguid", "not-a-uuid") }, "--aaguid"},
 		{"no key and no credential", func(a []string) []string { return drop(a, "--tls-key") }, "no systemd credential"},
+		{"unreadable secrets key", func(a []string) []string { return append(a, "--secrets-key", "/nonexistent/secrets.key") }, "/nonexistent/secrets.key"},
 		{"extra argument", func(a []string) []string { return append(a, "junk") }, "unknown command"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

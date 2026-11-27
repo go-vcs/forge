@@ -6,7 +6,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/go-vcs/forge/internal/adminsrv"
 	"github.com/go-vcs/forge/internal/secretbox"
@@ -16,13 +15,10 @@ import (
 // "secrets.key". With neither it returns nil, and the admin API then refuses to
 // store any secret rather than store it in clear.
 func loadSealer(explicit string) (*secretbox.Box, error) {
-	if explicit == "" && os.Getenv(adminsrv.CredentialsEnv) == "" {
-		return nil, nil
-	}
 	p, err := adminsrv.ResolveFile(explicit, "secrets.key")
 	if err != nil {
 		if explicit == "" {
-			return nil, nil // credentials directory without that credential
+			return nil, nil // no credentials directory, or one without that credential
 		}
 		return nil, fmt.Errorf("--secrets-key: %w", err)
 	}

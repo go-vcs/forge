@@ -108,6 +108,18 @@ func TestOIDCShowWhenUnset(t *testing.T) {
 	}
 }
 
+func TestOIDCServerRefusalsReachTheOperator(t *testing.T) {
+	r := newRig(t)
+	r.enrol(t)
+	if _, err := r.admin("oidc", "set-client", "--public", "--issuer", "http://insecure.example", "--client-id", "forge", "--redirect-uri", "https://forge.example/cb"); err == nil || !strings.Contains(err.Error(), "issuer") {
+		t.Fatalf("set-client with an http issuer = %v", err)
+	}
+	r.rawExec(`DROP TABLE oidc_client`)
+	if _, err := r.admin("oidc", "show"); err == nil {
+		t.Fatal("show hid a storage failure")
+	}
+}
+
 func TestPromptRefusesANonTerminal(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetErr(io.Discard)
