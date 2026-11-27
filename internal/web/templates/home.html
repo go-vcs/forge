@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go-vcs forge</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header><a href="/">go-vcs forge</a>
+{{if .Login}}<form method="post" action="/logout" class="inline"><span>{{.Login}}</span>
+<input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Sign out</button></form>
+{{else}}<a href="/login">Sign in</a>{{end}}</header>
+<main>
+<h1>go-vcs forge</h1>
+</main>
+</body>
+</html>

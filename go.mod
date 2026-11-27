@@ -6,6 +6,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/go-authn/fido v0.16.0
 	github.com/go-authn/harden v0.3.0
+	github.com/go-authn/rp v0.5.1
 	github.com/go-authn/webauthn v0.5.0
 	github.com/go-gnulinux/fido v0.6.0
 	github.com/go-macos/fido v0.6.0
@@ -21,6 +22,7 @@ require (
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/go-authn/oidc v0.8.1 // indirect
 	github.com/go-macos/iokit v0.14.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

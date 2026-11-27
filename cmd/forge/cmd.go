@@ -23,7 +23,9 @@ import (
 	"github.com/go-vcs/forge/internal/githttp"
 	"github.com/go-vcs/forge/internal/gitrepo"
 	"github.com/go-vcs/forge/internal/gitssh"
+	"github.com/go-vcs/forge/internal/secretbox"
 	"github.com/go-vcs/forge/internal/store"
+	"github.com/go-vcs/forge/internal/web"
 )
 
 // loadRoots reads and VERIFIES an MDS3 blob (FIDO Alliance signature chain,
@@ -67,8 +69,10 @@ type serveConfig struct {
 	// git transports (milestone 2): off unless --ssh-listen is given
 	sshListen, sshHostKey, reposRoot, gitBin string
 	httpListen                               string
-	gitTimeout                               time.Duration
-	gitSessions, gitSessionsPerAccount       int
+	// web UI and sign-in (milestone 3): off unless --web-listen is given
+	webListen                          string
+	gitTimeout                         time.Duration
+	gitSessions, gitSessionsPerAccount int
 }
 
 func serveCmd() *cobra.Command {
@@ -103,6 +107,7 @@ arguments, the environment or a URL.`,
 	f.StringVar(&c.sshHostKey, "ssh-host-key", "", "SSH host key `file`, an ed25519 OpenSSH private key, mode 0600, never generated (default: systemd credential ssh_host_key)")
 	f.StringVar(&c.reposRoot, "repos-root", "", "`directory` holding <owner>/<name>.git bare repositories (required with --ssh-listen)")
 	f.StringVar(&c.httpListen, "http-listen", "", "serve anonymous git clone and fetch of public repositories over smart HTTP (TLS 1.3, protocol v2) on this `address` (off when empty)")
+	f.StringVar(&c.webListen, "web-listen", "", "serve the web UI and OIDC sign-in (TLS 1.3) on this `address` (off when empty); the sign-in client is registered with `forgectl oidc set`")
 	f.StringVar(&c.gitBin, "git", "", "git `executable` (default: git on PATH)")
 	f.DurationVar(&c.gitTimeout, "git-timeout", gitrepo.DefaultRequestDuration, "longest a git session may last")
 	f.IntVar(&c.gitSessions, "git-sessions", gitrepo.DefaultTotalSessions, "most git sessions at once, in total")
@@ -213,6 +218,11 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		}
 	}
 
+	var webSrv *http.Server
+	if c.webListen != "" {
+		webSrv = newWebServer(tlsConfig(cert), st, seal, log)
+	}
+
 	adminLn, err := net.Listen("tcp", c.adminListen)
 	if err != nil {
 		return err
@@ -222,21 +232,29 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		adminLn.Close()
 		return err
 	}
-	var sshLn, httpLn net.Listener
+	var sshLn, httpLn, webLn net.Listener
+	closeAll := func() {
+		for _, l := range []net.Listener{adminLn, enrolLn, sshLn, httpLn, webLn} {
+			if l != nil {
+				l.Close()
+			}
+		}
+	}
 	if sshSrv != nil {
 		if sshLn, err = net.Listen("tcp", c.sshListen); err != nil {
-			adminLn.Close()
-			enrolLn.Close()
+			closeAll()
 			return err
 		}
 	}
 	if httpSrv != nil {
 		if httpLn, err = net.Listen("tcp", c.httpListen); err != nil {
-			adminLn.Close()
-			enrolLn.Close()
-			if sshLn != nil {
-				sshLn.Close()
-			}
+			closeAll()
+			return err
+		}
+	}
+	if webSrv != nil {
+		if webLn, err = net.Listen("tcp", c.webListen); err != nil {
+			closeAll()
 			return err
 		}
 	}
@@ -244,7 +262,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	fmt.Fprintf(out, "admin listening on %s\n", adminLn.Addr())
 	fmt.Fprintf(out, "enrolment listening on %s\n", c.enrolSocket)
 
-	errc := make(chan error, 4)
+	errc := make(chan error, 5)
 	run := func(s *grpc.Server, ln net.Listener) { errc <- s.Serve(ln) }
 	go run(adminSrv, adminsrv.LimitListener(adminLn, adminsrv.MaxConns, adminsrv.MaxConnsPerHost))
 	go run(enrolSrv, enrolLn)
@@ -270,6 +288,18 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	} else {
 		close(httpDone)
 	}
+	webDone := make(chan struct{})
+	if webSrv != nil {
+		fmt.Fprintf(out, "web listening on %s\n", webLn.Addr())
+		go func() {
+			defer close(webDone)
+			if err := webSrv.ServeTLS(webLn, "", ""); !errors.Is(err, http.ErrServerClosed) {
+				errc <- err
+			}
+		}()
+	} else {
+		close(webDone)
+	}
 
 	var first error
 	select {
@@ -287,7 +317,32 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		_ = httpSrv.Close()
 	}
 	<-httpDone
+	if webSrv != nil {
+		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = webSrv.Shutdown(shut)
+		cancel()
+		_ = webSrv.Close()
+	}
+	<-webDone
 	return first
+}
+
+// newWebServer builds the web listener: TLS 1.3 only (the session cookie is
+// Secure), HTTP/1.1, every timeout set.
+func newWebServer(tc *tls.Config, st *store.Store, seal *secretbox.Box, log *slog.Logger) *http.Server {
+	h := (&web.Server{Store: st, Seal: seal, Log: log}).Handler()
+	tc = tc.Clone()
+	tc.NextProtos = []string{"http/1.1"}
+	return &http.Server{
+		Handler:           h,
+		TLSConfig:         tc,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+	}
 }
 
 // newHTTPServer builds the smart HTTP server. TLS 1.3 only, HTTP/1.1, and every
