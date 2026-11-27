@@ -51,7 +51,7 @@ func RootCmd() *cobra.Command {
 	pf.StringVar(&o.credentialID, "credential-id", "", "administrator credential id, in `hex` (printed by enrol)")
 	pf.StringVar(&o.socket, "socket", "", "enrolment Unix socket `path` (enrol only)")
 
-	root.AddCommand(enrolCmd(&o), credentialsCmd(&o), usersCmd(&o), identitiesCmd(&o), sshKeysCmd(&o), policyCmd(&o))
+	root.AddCommand(enrolCmd(&o), credentialsCmd(&o), usersCmd(&o), identitiesCmd(&o), sshKeysCmd(&o), policyCmd(&o), oidcCmd(&o))
 	return root
 }
 

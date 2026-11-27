@@ -19,6 +19,9 @@ require (
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/go-authn/harden v0.3.0 // indirect
+	github.com/go-authn/oidc v0.8.1 // indirect
+	github.com/go-authn/rp v0.5.1 // indirect
 	github.com/go-macos/iokit v0.14.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -29,6 +32,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
 	modernc.org/libc v1.80.1 // indirect

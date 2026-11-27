@@ -2212,6 +2212,324 @@ func (*SetPolicyResponse) Descriptor() ([]byte, []int) {
 	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{44}
 }
 
+// OIDCClient is the forge's registration at the identity bridge, used for web
+// sign-in. The secret is never returned: only whether one is stored.
+type OIDCClient struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Issuer        string                 `protobuf:"bytes,1,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	RedirectUri   string                 `protobuf:"bytes,3,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	HasSecret     bool                   `protobuf:"varint,4,opt,name=has_secret,json=hasSecret,proto3" json:"has_secret,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OIDCClient) Reset() {
+	*x = OIDCClient{}
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OIDCClient) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OIDCClient) ProtoMessage() {}
+
+func (x *OIDCClient) ProtoReflect() protoreflect.Message {
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OIDCClient.ProtoReflect.Descriptor instead.
+func (*OIDCClient) Descriptor() ([]byte, []int) {
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *OIDCClient) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *OIDCClient) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *OIDCClient) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *OIDCClient) GetHasSecret() bool {
+	if x != nil {
+		return x.HasSecret
+	}
+	return false
+}
+
+func (x *OIDCClient) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type GetOIDCClientRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionToken  []byte                 `protobuf:"bytes,1,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOIDCClientRequest) Reset() {
+	*x = GetOIDCClientRequest{}
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOIDCClientRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOIDCClientRequest) ProtoMessage() {}
+
+func (x *GetOIDCClientRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOIDCClientRequest.ProtoReflect.Descriptor instead.
+func (*GetOIDCClientRequest) Descriptor() ([]byte, []int) {
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *GetOIDCClientRequest) GetSessionToken() []byte {
+	if x != nil {
+		return x.SessionToken
+	}
+	return nil
+}
+
+type GetOIDCClientResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// client is unset until SetOIDCClient has been called.
+	Client        *OIDCClient `protobuf:"bytes,1,opt,name=client,proto3" json:"client,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOIDCClientResponse) Reset() {
+	*x = GetOIDCClientResponse{}
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOIDCClientResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOIDCClientResponse) ProtoMessage() {}
+
+func (x *GetOIDCClientResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOIDCClientResponse.ProtoReflect.Descriptor instead.
+func (*GetOIDCClientResponse) Descriptor() ([]byte, []int) {
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *GetOIDCClientResponse) GetClient() *OIDCClient {
+	if x != nil {
+		return x.Client
+	}
+	return nil
+}
+
+// SetOIDCClientParams replaces the registration. client_secret travels only in
+// this signed request body (never argv, environment or URL), and is stored
+// encrypted. An empty client_secret makes a public client (PKCE only).
+type SetOIDCClientParams struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Issuer        string                 `protobuf:"bytes,1,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	RedirectUri   string                 `protobuf:"bytes,3,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	ClientSecret  []byte                 `protobuf:"bytes,4,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOIDCClientParams) Reset() {
+	*x = SetOIDCClientParams{}
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOIDCClientParams) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOIDCClientParams) ProtoMessage() {}
+
+func (x *SetOIDCClientParams) ProtoReflect() protoreflect.Message {
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOIDCClientParams.ProtoReflect.Descriptor instead.
+func (*SetOIDCClientParams) Descriptor() ([]byte, []int) {
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *SetOIDCClientParams) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *SetOIDCClientParams) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *SetOIDCClientParams) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *SetOIDCClientParams) GetClientSecret() []byte {
+	if x != nil {
+		return x.ClientSecret
+	}
+	return nil
+}
+
+type SetOIDCClientRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Envelope      *Envelope              `protobuf:"bytes,1,opt,name=envelope,proto3" json:"envelope,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOIDCClientRequest) Reset() {
+	*x = SetOIDCClientRequest{}
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOIDCClientRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOIDCClientRequest) ProtoMessage() {}
+
+func (x *SetOIDCClientRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOIDCClientRequest.ProtoReflect.Descriptor instead.
+func (*SetOIDCClientRequest) Descriptor() ([]byte, []int) {
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *SetOIDCClientRequest) GetEnvelope() *Envelope {
+	if x != nil {
+		return x.Envelope
+	}
+	return nil
+}
+
+type SetOIDCClientResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOIDCClientResponse) Reset() {
+	*x = SetOIDCClientResponse{}
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOIDCClientResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOIDCClientResponse) ProtoMessage() {}
+
+func (x *SetOIDCClientResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOIDCClientResponse.ProtoReflect.Descriptor instead.
+func (*SetOIDCClientResponse) Descriptor() ([]byte, []int) {
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{50}
+}
+
 type BeginEnrolRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2220,7 +2538,7 @@ type BeginEnrolRequest struct {
 
 func (x *BeginEnrolRequest) Reset() {
 	*x = BeginEnrolRequest{}
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[45]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2232,7 +2550,7 @@ func (x *BeginEnrolRequest) String() string {
 func (*BeginEnrolRequest) ProtoMessage() {}
 
 func (x *BeginEnrolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[45]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2245,7 +2563,7 @@ func (x *BeginEnrolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginEnrolRequest.ProtoReflect.Descriptor instead.
 func (*BeginEnrolRequest) Descriptor() ([]byte, []int) {
-	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{45}
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{51}
 }
 
 type BeginEnrolResponse struct {
@@ -2260,7 +2578,7 @@ type BeginEnrolResponse struct {
 
 func (x *BeginEnrolResponse) Reset() {
 	*x = BeginEnrolResponse{}
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[46]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2272,7 +2590,7 @@ func (x *BeginEnrolResponse) String() string {
 func (*BeginEnrolResponse) ProtoMessage() {}
 
 func (x *BeginEnrolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[46]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2285,7 +2603,7 @@ func (x *BeginEnrolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginEnrolResponse.ProtoReflect.Descriptor instead.
 func (*BeginEnrolResponse) Descriptor() ([]byte, []int) {
-	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{46}
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *BeginEnrolResponse) GetRpId() string {
@@ -2332,7 +2650,7 @@ type FinishEnrolRequest struct {
 
 func (x *FinishEnrolRequest) Reset() {
 	*x = FinishEnrolRequest{}
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[47]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2344,7 +2662,7 @@ func (x *FinishEnrolRequest) String() string {
 func (*FinishEnrolRequest) ProtoMessage() {}
 
 func (x *FinishEnrolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[47]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2357,7 +2675,7 @@ func (x *FinishEnrolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinishEnrolRequest.ProtoReflect.Descriptor instead.
 func (*FinishEnrolRequest) Descriptor() ([]byte, []int) {
-	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{47}
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *FinishEnrolRequest) GetChallenge() []byte {
@@ -2404,7 +2722,7 @@ type FinishEnrolResponse struct {
 
 func (x *FinishEnrolResponse) Reset() {
 	*x = FinishEnrolResponse{}
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[48]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2416,7 +2734,7 @@ func (x *FinishEnrolResponse) String() string {
 func (*FinishEnrolResponse) ProtoMessage() {}
 
 func (x *FinishEnrolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[48]
+	mi := &file_govcs_forge_admin_v1_admin_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2429,7 +2747,7 @@ func (x *FinishEnrolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinishEnrolResponse.ProtoReflect.Descriptor instead.
 func (*FinishEnrolResponse) Descriptor() ([]byte, []int) {
-	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{48}
+	return file_govcs_forge_admin_v1_admin_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *FinishEnrolResponse) GetCredential() *AdminCredential {
@@ -2567,7 +2885,28 @@ const file_govcs_forge_admin_v1_admin_proto_rawDesc = "" +
 	"\x06policy\x18\x01 \x01(\v2\x1c.govcs.forge.admin.v1.PolicyR\x06policy\"N\n" +
 	"\x10SetPolicyRequest\x12:\n" +
 	"\benvelope\x18\x01 \x01(\v2\x1e.govcs.forge.admin.v1.EnvelopeR\benvelope\"\x13\n" +
-	"\x11SetPolicyResponse\"\x13\n" +
+	"\x11SetPolicyResponse\"\xbe\x01\n" +
+	"\n" +
+	"OIDCClient\x12\x16\n" +
+	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12\x1b\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12!\n" +
+	"\fredirect_uri\x18\x03 \x01(\tR\vredirectUri\x12\x1d\n" +
+	"\n" +
+	"has_secret\x18\x04 \x01(\bR\thasSecret\x129\n" +
+	"\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\";\n" +
+	"\x14GetOIDCClientRequest\x12#\n" +
+	"\rsession_token\x18\x01 \x01(\fR\fsessionToken\"Q\n" +
+	"\x15GetOIDCClientResponse\x128\n" +
+	"\x06client\x18\x01 \x01(\v2 .govcs.forge.admin.v1.OIDCClientR\x06client\"\x92\x01\n" +
+	"\x13SetOIDCClientParams\x12\x16\n" +
+	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12\x1b\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12!\n" +
+	"\fredirect_uri\x18\x03 \x01(\tR\vredirectUri\x12#\n" +
+	"\rclient_secret\x18\x04 \x01(\fR\fclientSecret\"R\n" +
+	"\x14SetOIDCClientRequest\x12:\n" +
+	"\benvelope\x18\x01 \x01(\v2\x1e.govcs.forge.admin.v1.EnvelopeR\benvelope\"\x17\n" +
+	"\x15SetOIDCClientResponse\"\x13\n" +
 	"\x11BeginEnrolRequest\"\xa3\x01\n" +
 	"\x12BeginEnrolResponse\x12\x13\n" +
 	"\x05rp_id\x18\x01 \x01(\tR\x04rpId\x12\x1f\n" +
@@ -2585,7 +2924,7 @@ const file_govcs_forge_admin_v1_admin_proto_rawDesc = "" +
 	"\x13FinishEnrolResponse\x12E\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2%.govcs.forge.admin.v1.AdminCredentialR\n" +
-	"credential2\x98\f\n" +
+	"credential2\xec\r\n" +
 	"\fAdminService\x12Y\n" +
 	"\bGetNonce\x12%.govcs.forge.admin.v1.GetNonceRequest\x1a&.govcs.forge.admin.v1.GetNonceResponse\x12b\n" +
 	"\vOpenSession\x12(.govcs.forge.admin.v1.OpenSessionRequest\x1a).govcs.forge.admin.v1.OpenSessionResponse\x12}\n" +
@@ -2602,7 +2941,9 @@ const file_govcs_forge_admin_v1_admin_proto_rawDesc = "" +
 	"\tAddSSHKey\x12&.govcs.forge.admin.v1.AddSSHKeyRequest\x1a'.govcs.forge.admin.v1.AddSSHKeyResponse\x12e\n" +
 	"\fRemoveSSHKey\x12).govcs.forge.admin.v1.RemoveSSHKeyRequest\x1a*.govcs.forge.admin.v1.RemoveSSHKeyResponse\x12\\\n" +
 	"\tGetPolicy\x12&.govcs.forge.admin.v1.GetPolicyRequest\x1a'.govcs.forge.admin.v1.GetPolicyResponse\x12\\\n" +
-	"\tSetPolicy\x12&.govcs.forge.admin.v1.SetPolicyRequest\x1a'.govcs.forge.admin.v1.SetPolicyResponse2\xd3\x01\n" +
+	"\tSetPolicy\x12&.govcs.forge.admin.v1.SetPolicyRequest\x1a'.govcs.forge.admin.v1.SetPolicyResponse\x12h\n" +
+	"\rGetOIDCClient\x12*.govcs.forge.admin.v1.GetOIDCClientRequest\x1a+.govcs.forge.admin.v1.GetOIDCClientResponse\x12h\n" +
+	"\rSetOIDCClient\x12*.govcs.forge.admin.v1.SetOIDCClientRequest\x1a+.govcs.forge.admin.v1.SetOIDCClientResponse2\xd3\x01\n" +
 	"\fEnrolService\x12_\n" +
 	"\n" +
 	"BeginEnrol\x12'.govcs.forge.admin.v1.BeginEnrolRequest\x1a(.govcs.forge.admin.v1.BeginEnrolResponse\x12b\n" +
@@ -2620,7 +2961,7 @@ func file_govcs_forge_admin_v1_admin_proto_rawDescGZIP() []byte {
 	return file_govcs_forge_admin_v1_admin_proto_rawDescData
 }
 
-var file_govcs_forge_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
+var file_govcs_forge_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_govcs_forge_admin_v1_admin_proto_goTypes = []any{
 	(*Envelope)(nil),                      // 0: govcs.forge.admin.v1.Envelope
 	(*GetNonceRequest)(nil),               // 1: govcs.forge.admin.v1.GetNonceRequest
@@ -2667,32 +3008,38 @@ var file_govcs_forge_admin_v1_admin_proto_goTypes = []any{
 	(*SetPolicyParams)(nil),               // 42: govcs.forge.admin.v1.SetPolicyParams
 	(*SetPolicyRequest)(nil),              // 43: govcs.forge.admin.v1.SetPolicyRequest
 	(*SetPolicyResponse)(nil),             // 44: govcs.forge.admin.v1.SetPolicyResponse
-	(*BeginEnrolRequest)(nil),             // 45: govcs.forge.admin.v1.BeginEnrolRequest
-	(*BeginEnrolResponse)(nil),            // 46: govcs.forge.admin.v1.BeginEnrolResponse
-	(*FinishEnrolRequest)(nil),            // 47: govcs.forge.admin.v1.FinishEnrolRequest
-	(*FinishEnrolResponse)(nil),           // 48: govcs.forge.admin.v1.FinishEnrolResponse
-	(*timestamppb.Timestamp)(nil),         // 49: google.protobuf.Timestamp
+	(*OIDCClient)(nil),                    // 45: govcs.forge.admin.v1.OIDCClient
+	(*GetOIDCClientRequest)(nil),          // 46: govcs.forge.admin.v1.GetOIDCClientRequest
+	(*GetOIDCClientResponse)(nil),         // 47: govcs.forge.admin.v1.GetOIDCClientResponse
+	(*SetOIDCClientParams)(nil),           // 48: govcs.forge.admin.v1.SetOIDCClientParams
+	(*SetOIDCClientRequest)(nil),          // 49: govcs.forge.admin.v1.SetOIDCClientRequest
+	(*SetOIDCClientResponse)(nil),         // 50: govcs.forge.admin.v1.SetOIDCClientResponse
+	(*BeginEnrolRequest)(nil),             // 51: govcs.forge.admin.v1.BeginEnrolRequest
+	(*BeginEnrolResponse)(nil),            // 52: govcs.forge.admin.v1.BeginEnrolResponse
+	(*FinishEnrolRequest)(nil),            // 53: govcs.forge.admin.v1.FinishEnrolRequest
+	(*FinishEnrolResponse)(nil),           // 54: govcs.forge.admin.v1.FinishEnrolResponse
+	(*timestamppb.Timestamp)(nil),         // 55: google.protobuf.Timestamp
 }
 var file_govcs_forge_admin_v1_admin_proto_depIdxs = []int32{
-	49, // 0: govcs.forge.admin.v1.GetNonceResponse.expires_at:type_name -> google.protobuf.Timestamp
+	55, // 0: govcs.forge.admin.v1.GetNonceResponse.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: govcs.forge.admin.v1.OpenSessionRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
-	49, // 2: govcs.forge.admin.v1.OpenSessionResponse.expires_at:type_name -> google.protobuf.Timestamp
-	49, // 3: govcs.forge.admin.v1.AdminCredential.created_at:type_name -> google.protobuf.Timestamp
-	49, // 4: govcs.forge.admin.v1.AdminCredential.revoked_at:type_name -> google.protobuf.Timestamp
+	55, // 2: govcs.forge.admin.v1.OpenSessionResponse.expires_at:type_name -> google.protobuf.Timestamp
+	55, // 3: govcs.forge.admin.v1.AdminCredential.created_at:type_name -> google.protobuf.Timestamp
+	55, // 4: govcs.forge.admin.v1.AdminCredential.revoked_at:type_name -> google.protobuf.Timestamp
 	6,  // 5: govcs.forge.admin.v1.ListAdminCredentialsResponse.credentials:type_name -> govcs.forge.admin.v1.AdminCredential
 	0,  // 6: govcs.forge.admin.v1.RevokeAdminCredentialRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
-	49, // 7: govcs.forge.admin.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	49, // 8: govcs.forge.admin.v1.User.disabled_at:type_name -> google.protobuf.Timestamp
+	55, // 7: govcs.forge.admin.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	55, // 8: govcs.forge.admin.v1.User.disabled_at:type_name -> google.protobuf.Timestamp
 	0,  // 9: govcs.forge.admin.v1.CreateUserRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
 	12, // 10: govcs.forge.admin.v1.CreateUserResponse.user:type_name -> govcs.forge.admin.v1.User
 	12, // 11: govcs.forge.admin.v1.ListUsersResponse.users:type_name -> govcs.forge.admin.v1.User
 	0,  // 12: govcs.forge.admin.v1.DisableUserRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
-	49, // 13: govcs.forge.admin.v1.Identity.created_at:type_name -> google.protobuf.Timestamp
+	55, // 13: govcs.forge.admin.v1.Identity.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 14: govcs.forge.admin.v1.BindIdentityRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
 	21, // 15: govcs.forge.admin.v1.BindIdentityResponse.identity:type_name -> govcs.forge.admin.v1.Identity
 	21, // 16: govcs.forge.admin.v1.ListIdentitiesResponse.identities:type_name -> govcs.forge.admin.v1.Identity
 	0,  // 17: govcs.forge.admin.v1.UnbindIdentityRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
-	49, // 18: govcs.forge.admin.v1.SSHKey.created_at:type_name -> google.protobuf.Timestamp
+	55, // 18: govcs.forge.admin.v1.SSHKey.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 19: govcs.forge.admin.v1.AddSSHKeyRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
 	30, // 20: govcs.forge.admin.v1.AddSSHKeyResponse.key:type_name -> govcs.forge.admin.v1.SSHKey
 	30, // 21: govcs.forge.admin.v1.ListSSHKeysResponse.keys:type_name -> govcs.forge.admin.v1.SSHKey
@@ -2700,47 +3047,54 @@ var file_govcs_forge_admin_v1_admin_proto_depIdxs = []int32{
 	39, // 23: govcs.forge.admin.v1.GetPolicyResponse.policy:type_name -> govcs.forge.admin.v1.Policy
 	39, // 24: govcs.forge.admin.v1.SetPolicyParams.policy:type_name -> govcs.forge.admin.v1.Policy
 	0,  // 25: govcs.forge.admin.v1.SetPolicyRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
-	49, // 26: govcs.forge.admin.v1.BeginEnrolResponse.expires_at:type_name -> google.protobuf.Timestamp
-	6,  // 27: govcs.forge.admin.v1.FinishEnrolResponse.credential:type_name -> govcs.forge.admin.v1.AdminCredential
-	1,  // 28: govcs.forge.admin.v1.AdminService.GetNonce:input_type -> govcs.forge.admin.v1.GetNonceRequest
-	4,  // 29: govcs.forge.admin.v1.AdminService.OpenSession:input_type -> govcs.forge.admin.v1.OpenSessionRequest
-	7,  // 30: govcs.forge.admin.v1.AdminService.ListAdminCredentials:input_type -> govcs.forge.admin.v1.ListAdminCredentialsRequest
-	10, // 31: govcs.forge.admin.v1.AdminService.RevokeAdminCredential:input_type -> govcs.forge.admin.v1.RevokeAdminCredentialRequest
-	14, // 32: govcs.forge.admin.v1.AdminService.CreateUser:input_type -> govcs.forge.admin.v1.CreateUserRequest
-	16, // 33: govcs.forge.admin.v1.AdminService.ListUsers:input_type -> govcs.forge.admin.v1.ListUsersRequest
-	19, // 34: govcs.forge.admin.v1.AdminService.DisableUser:input_type -> govcs.forge.admin.v1.DisableUserRequest
-	23, // 35: govcs.forge.admin.v1.AdminService.BindIdentity:input_type -> govcs.forge.admin.v1.BindIdentityRequest
-	25, // 36: govcs.forge.admin.v1.AdminService.ListIdentities:input_type -> govcs.forge.admin.v1.ListIdentitiesRequest
-	28, // 37: govcs.forge.admin.v1.AdminService.UnbindIdentity:input_type -> govcs.forge.admin.v1.UnbindIdentityRequest
-	34, // 38: govcs.forge.admin.v1.AdminService.ListSSHKeys:input_type -> govcs.forge.admin.v1.ListSSHKeysRequest
-	32, // 39: govcs.forge.admin.v1.AdminService.AddSSHKey:input_type -> govcs.forge.admin.v1.AddSSHKeyRequest
-	37, // 40: govcs.forge.admin.v1.AdminService.RemoveSSHKey:input_type -> govcs.forge.admin.v1.RemoveSSHKeyRequest
-	40, // 41: govcs.forge.admin.v1.AdminService.GetPolicy:input_type -> govcs.forge.admin.v1.GetPolicyRequest
-	43, // 42: govcs.forge.admin.v1.AdminService.SetPolicy:input_type -> govcs.forge.admin.v1.SetPolicyRequest
-	45, // 43: govcs.forge.admin.v1.EnrolService.BeginEnrol:input_type -> govcs.forge.admin.v1.BeginEnrolRequest
-	47, // 44: govcs.forge.admin.v1.EnrolService.FinishEnrol:input_type -> govcs.forge.admin.v1.FinishEnrolRequest
-	2,  // 45: govcs.forge.admin.v1.AdminService.GetNonce:output_type -> govcs.forge.admin.v1.GetNonceResponse
-	5,  // 46: govcs.forge.admin.v1.AdminService.OpenSession:output_type -> govcs.forge.admin.v1.OpenSessionResponse
-	8,  // 47: govcs.forge.admin.v1.AdminService.ListAdminCredentials:output_type -> govcs.forge.admin.v1.ListAdminCredentialsResponse
-	11, // 48: govcs.forge.admin.v1.AdminService.RevokeAdminCredential:output_type -> govcs.forge.admin.v1.RevokeAdminCredentialResponse
-	15, // 49: govcs.forge.admin.v1.AdminService.CreateUser:output_type -> govcs.forge.admin.v1.CreateUserResponse
-	17, // 50: govcs.forge.admin.v1.AdminService.ListUsers:output_type -> govcs.forge.admin.v1.ListUsersResponse
-	20, // 51: govcs.forge.admin.v1.AdminService.DisableUser:output_type -> govcs.forge.admin.v1.DisableUserResponse
-	24, // 52: govcs.forge.admin.v1.AdminService.BindIdentity:output_type -> govcs.forge.admin.v1.BindIdentityResponse
-	26, // 53: govcs.forge.admin.v1.AdminService.ListIdentities:output_type -> govcs.forge.admin.v1.ListIdentitiesResponse
-	29, // 54: govcs.forge.admin.v1.AdminService.UnbindIdentity:output_type -> govcs.forge.admin.v1.UnbindIdentityResponse
-	35, // 55: govcs.forge.admin.v1.AdminService.ListSSHKeys:output_type -> govcs.forge.admin.v1.ListSSHKeysResponse
-	33, // 56: govcs.forge.admin.v1.AdminService.AddSSHKey:output_type -> govcs.forge.admin.v1.AddSSHKeyResponse
-	38, // 57: govcs.forge.admin.v1.AdminService.RemoveSSHKey:output_type -> govcs.forge.admin.v1.RemoveSSHKeyResponse
-	41, // 58: govcs.forge.admin.v1.AdminService.GetPolicy:output_type -> govcs.forge.admin.v1.GetPolicyResponse
-	44, // 59: govcs.forge.admin.v1.AdminService.SetPolicy:output_type -> govcs.forge.admin.v1.SetPolicyResponse
-	46, // 60: govcs.forge.admin.v1.EnrolService.BeginEnrol:output_type -> govcs.forge.admin.v1.BeginEnrolResponse
-	48, // 61: govcs.forge.admin.v1.EnrolService.FinishEnrol:output_type -> govcs.forge.admin.v1.FinishEnrolResponse
-	45, // [45:62] is the sub-list for method output_type
-	28, // [28:45] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	55, // 26: govcs.forge.admin.v1.OIDCClient.updated_at:type_name -> google.protobuf.Timestamp
+	45, // 27: govcs.forge.admin.v1.GetOIDCClientResponse.client:type_name -> govcs.forge.admin.v1.OIDCClient
+	0,  // 28: govcs.forge.admin.v1.SetOIDCClientRequest.envelope:type_name -> govcs.forge.admin.v1.Envelope
+	55, // 29: govcs.forge.admin.v1.BeginEnrolResponse.expires_at:type_name -> google.protobuf.Timestamp
+	6,  // 30: govcs.forge.admin.v1.FinishEnrolResponse.credential:type_name -> govcs.forge.admin.v1.AdminCredential
+	1,  // 31: govcs.forge.admin.v1.AdminService.GetNonce:input_type -> govcs.forge.admin.v1.GetNonceRequest
+	4,  // 32: govcs.forge.admin.v1.AdminService.OpenSession:input_type -> govcs.forge.admin.v1.OpenSessionRequest
+	7,  // 33: govcs.forge.admin.v1.AdminService.ListAdminCredentials:input_type -> govcs.forge.admin.v1.ListAdminCredentialsRequest
+	10, // 34: govcs.forge.admin.v1.AdminService.RevokeAdminCredential:input_type -> govcs.forge.admin.v1.RevokeAdminCredentialRequest
+	14, // 35: govcs.forge.admin.v1.AdminService.CreateUser:input_type -> govcs.forge.admin.v1.CreateUserRequest
+	16, // 36: govcs.forge.admin.v1.AdminService.ListUsers:input_type -> govcs.forge.admin.v1.ListUsersRequest
+	19, // 37: govcs.forge.admin.v1.AdminService.DisableUser:input_type -> govcs.forge.admin.v1.DisableUserRequest
+	23, // 38: govcs.forge.admin.v1.AdminService.BindIdentity:input_type -> govcs.forge.admin.v1.BindIdentityRequest
+	25, // 39: govcs.forge.admin.v1.AdminService.ListIdentities:input_type -> govcs.forge.admin.v1.ListIdentitiesRequest
+	28, // 40: govcs.forge.admin.v1.AdminService.UnbindIdentity:input_type -> govcs.forge.admin.v1.UnbindIdentityRequest
+	34, // 41: govcs.forge.admin.v1.AdminService.ListSSHKeys:input_type -> govcs.forge.admin.v1.ListSSHKeysRequest
+	32, // 42: govcs.forge.admin.v1.AdminService.AddSSHKey:input_type -> govcs.forge.admin.v1.AddSSHKeyRequest
+	37, // 43: govcs.forge.admin.v1.AdminService.RemoveSSHKey:input_type -> govcs.forge.admin.v1.RemoveSSHKeyRequest
+	40, // 44: govcs.forge.admin.v1.AdminService.GetPolicy:input_type -> govcs.forge.admin.v1.GetPolicyRequest
+	43, // 45: govcs.forge.admin.v1.AdminService.SetPolicy:input_type -> govcs.forge.admin.v1.SetPolicyRequest
+	46, // 46: govcs.forge.admin.v1.AdminService.GetOIDCClient:input_type -> govcs.forge.admin.v1.GetOIDCClientRequest
+	49, // 47: govcs.forge.admin.v1.AdminService.SetOIDCClient:input_type -> govcs.forge.admin.v1.SetOIDCClientRequest
+	51, // 48: govcs.forge.admin.v1.EnrolService.BeginEnrol:input_type -> govcs.forge.admin.v1.BeginEnrolRequest
+	53, // 49: govcs.forge.admin.v1.EnrolService.FinishEnrol:input_type -> govcs.forge.admin.v1.FinishEnrolRequest
+	2,  // 50: govcs.forge.admin.v1.AdminService.GetNonce:output_type -> govcs.forge.admin.v1.GetNonceResponse
+	5,  // 51: govcs.forge.admin.v1.AdminService.OpenSession:output_type -> govcs.forge.admin.v1.OpenSessionResponse
+	8,  // 52: govcs.forge.admin.v1.AdminService.ListAdminCredentials:output_type -> govcs.forge.admin.v1.ListAdminCredentialsResponse
+	11, // 53: govcs.forge.admin.v1.AdminService.RevokeAdminCredential:output_type -> govcs.forge.admin.v1.RevokeAdminCredentialResponse
+	15, // 54: govcs.forge.admin.v1.AdminService.CreateUser:output_type -> govcs.forge.admin.v1.CreateUserResponse
+	17, // 55: govcs.forge.admin.v1.AdminService.ListUsers:output_type -> govcs.forge.admin.v1.ListUsersResponse
+	20, // 56: govcs.forge.admin.v1.AdminService.DisableUser:output_type -> govcs.forge.admin.v1.DisableUserResponse
+	24, // 57: govcs.forge.admin.v1.AdminService.BindIdentity:output_type -> govcs.forge.admin.v1.BindIdentityResponse
+	26, // 58: govcs.forge.admin.v1.AdminService.ListIdentities:output_type -> govcs.forge.admin.v1.ListIdentitiesResponse
+	29, // 59: govcs.forge.admin.v1.AdminService.UnbindIdentity:output_type -> govcs.forge.admin.v1.UnbindIdentityResponse
+	35, // 60: govcs.forge.admin.v1.AdminService.ListSSHKeys:output_type -> govcs.forge.admin.v1.ListSSHKeysResponse
+	33, // 61: govcs.forge.admin.v1.AdminService.AddSSHKey:output_type -> govcs.forge.admin.v1.AddSSHKeyResponse
+	38, // 62: govcs.forge.admin.v1.AdminService.RemoveSSHKey:output_type -> govcs.forge.admin.v1.RemoveSSHKeyResponse
+	41, // 63: govcs.forge.admin.v1.AdminService.GetPolicy:output_type -> govcs.forge.admin.v1.GetPolicyResponse
+	44, // 64: govcs.forge.admin.v1.AdminService.SetPolicy:output_type -> govcs.forge.admin.v1.SetPolicyResponse
+	47, // 65: govcs.forge.admin.v1.AdminService.GetOIDCClient:output_type -> govcs.forge.admin.v1.GetOIDCClientResponse
+	50, // 66: govcs.forge.admin.v1.AdminService.SetOIDCClient:output_type -> govcs.forge.admin.v1.SetOIDCClientResponse
+	52, // 67: govcs.forge.admin.v1.EnrolService.BeginEnrol:output_type -> govcs.forge.admin.v1.BeginEnrolResponse
+	54, // 68: govcs.forge.admin.v1.EnrolService.FinishEnrol:output_type -> govcs.forge.admin.v1.FinishEnrolResponse
+	50, // [50:69] is the sub-list for method output_type
+	31, // [31:50] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_govcs_forge_admin_v1_admin_proto_init() }
@@ -2754,7 +3108,7 @@ func file_govcs_forge_admin_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_govcs_forge_admin_v1_admin_proto_rawDesc), len(file_govcs_forge_admin_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   49,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

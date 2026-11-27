@@ -90,6 +90,7 @@ func newRig(t *testing.T) *rig {
 		Verifier: &adminauth.Verifier{RPID: rpID, Credentials: st, Nonces: nonces},
 		Nonces:   nonces,
 		Sessions: adminauth.NewSessions(time.Now, time.Minute, 8, 64),
+		Seal:     testBox(t),
 	}
 	srv, err := adminsrv.NewAdminServer(adminsrv.TLSConfig(tls.Certificate{Certificate: [][]byte{der}, PrivateKey: k, Leaf: leaf}), adm)
 	if err != nil {

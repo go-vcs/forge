@@ -109,6 +109,28 @@ already stored (the keys stay in the database, so relaxing the policy brings
 them back). The CLI is `forgectl ssh-keys add|list|remove` (the key is read from
 a file or `-`, never from argv) and `forgectl policy show|set`.
 
+## Web sign-in: OIDC client and identity bindings
+
+Web sign-in goes through the go-authn bridge only (see design.md). Which
+`(issuer, subject)` may sign in is decided here, never by the sign-in itself.
+
+| Call | Kind | What it does |
+|---|---|---|
+| `BindIdentity(issuer, subject, login)` | signed | Binds an identity to an enabled user. An identity already bound, to anyone, is `AlreadyExists`; there is no e-mail field. |
+| `UnbindIdentity(issuer, subject)` | signed | Removes the binding; web sessions made through it end on their next request. |
+| `ListIdentities(login?)` | session | Lists bindings. |
+| `SetOIDCClient(issuer, client_id, redirect_uri, client_secret)` | signed | Replaces the forge's one registration at the bridge. The issuer must be https; the redirect URI absolute, https (or loopback http), with no fragment or userinfo. |
+| `GetOIDCClient()` | session | Reads it. The secret is never returned, only `has_secret`. |
+
+The client secret travels only in the signed request body. `forgectl oidc
+set-client` reads it from a no-echo prompt or from an inherited descriptor
+(`--secret-fd N`, N >= 3), and has no flag that takes it on the command line;
+`--public` registers a client without one (PKCE only). The server stores it
+sealed with AES-256-GCM (`internal/secretbox`; fresh random nonce, additional
+data naming its purpose) under a 32-byte key read from `--secrets-key` or the
+systemd credential `secrets.key` (regular file, mode 0600, no symbolic link).
+With no key the server refuses to store a secret: it never stores one in clear.
+
 ## Audit
 
 A signed call leaves two rows in `admin_audit`: an `attempt` row when it is

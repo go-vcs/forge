@@ -54,6 +54,9 @@ service AdminService {
 
   rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
   rpc SetPolicy(SetPolicyRequest) returns (SetPolicyResponse);
+
+  rpc GetOIDCClient(GetOIDCClientRequest) returns (GetOIDCClientResponse);
+  rpc SetOIDCClient(SetOIDCClientRequest) returns (SetOIDCClientResponse);
 }
 
 // EnrolService is served ONLY on a local Unix socket whose access is controlled
@@ -268,6 +271,41 @@ message SetPolicyRequest {
 }
 
 message SetPolicyResponse {}
+
+// OIDCClient is the forge's registration at the identity bridge, used for web
+// sign-in. The secret is never returned: only whether one is stored.
+message OIDCClient {
+  string issuer = 1;
+  string client_id = 2;
+  string redirect_uri = 3;
+  bool has_secret = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message GetOIDCClientRequest {
+  bytes session_token = 1;
+}
+
+message GetOIDCClientResponse {
+  // client is unset until SetOIDCClient has been called.
+  OIDCClient client = 1;
+}
+
+// SetOIDCClientParams replaces the registration. client_secret travels only in
+// this signed request body (never argv, environment or URL), and is stored
+// encrypted. An empty client_secret makes a public client (PKCE only).
+message SetOIDCClientParams {
+  string issuer = 1;
+  string client_id = 2;
+  string redirect_uri = 3;
+  bytes client_secret = 4;
+}
+
+message SetOIDCClientRequest {
+  Envelope envelope = 1;
+}
+
+message SetOIDCClientResponse {}
 
 message BeginEnrolRequest {}
 
