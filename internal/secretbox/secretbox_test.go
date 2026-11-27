@@ -37,10 +37,17 @@ func TestRoundTripAndRefusals(t *testing.T) {
 	if _, err := b.Open(bad, "p"); err != secretbox.ErrOpen {
 		t.Fatalf("tampered: %v", err)
 	}
-	for _, short := range [][]byte{nil, s1[:5], s1[:12], s1[:27]} {
-		if _, err := b.Open(short, "p"); err != secretbox.ErrOpen {
-			t.Fatalf("short %d: %v", len(short), err)
-		}
+	for n := range len(s1) {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("a %d-byte input panicked: %v", n, r)
+				}
+			}()
+			if _, err := b.Open(s1[:n], "p"); err != secretbox.ErrOpen {
+				t.Errorf("short %d: %v", n, err)
+			}
+		}()
 	}
 	other, _ := secretbox.New(bytes.Repeat([]byte{8}, 32))
 	if _, err := other.Open(s1, "p"); err != secretbox.ErrOpen {
