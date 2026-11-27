@@ -24,7 +24,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -120,30 +119,43 @@ func (r *Repo) run(ctx context.Context, limit int, args ...string) (out []byte, 
 	full := append([]string{"--no-pager", "--git-dir=" + r.Dir, "-c", "core.quotepath=off"}, args...)
 	c := exec.CommandContext(ctx, g, full...)
 	c.Env = r.env()
-	pipe, err := c.StdoutPipe()
-	if err != nil {
-		return nil, false, err
-	}
-	if err = c.Start(); err != nil {
-		return nil, false, err
-	}
-	out, err = io.ReadAll(io.LimitReader(pipe, int64(limit)+1))
-	if len(out) > limit {
-		out, truncated = out[:limit], true
-		cancel()
-	}
-	werr := c.Wait()
+	w := &capWriter{limit: limit, stop: cancel}
+	c.Stdout = w
+	c.WaitDelay = 2 * time.Second // a child that keeps the pipe open does not hold the page
+	werr := c.Run()
+	var exit *exec.ExitError
 	switch {
-	case err != nil:
-		return nil, false, err
-	case truncated:
-		return out, true, nil
+	case w.cut:
+		return w.buf, true, nil
 	case ctx.Err() != nil:
 		return nil, false, ctx.Err()
-	case werr != nil:
+	case errors.As(werr, &exit): // git ran and said no: no such ref, path or object
 		return nil, false, ErrNotFound
+	case werr != nil: // git could not be run
+		return nil, false, werr
 	}
-	return out, false, nil
+	return w.buf, false, nil
+}
+
+// capWriter keeps at most limit bytes and, at the first byte past them, stops
+// the process: a command that has said more than a page can hold has no more to
+// say that we would read.
+type capWriter struct {
+	buf   []byte
+	limit int
+	cut   bool
+	stop  context.CancelFunc
+}
+
+func (w *capWriter) Write(p []byte) (int, error) {
+	if room := w.limit - len(w.buf); len(p) > room {
+		w.buf = append(w.buf, p[:room]...)
+		w.cut = true
+		w.stop()
+		return len(p), nil
+	}
+	w.buf = append(w.buf, p...)
+	return len(p), nil
 }
 
 // Resolve turns a ref ("HEAD", a branch, a tag, or a full object id) into the
@@ -248,10 +260,15 @@ func (r *Repo) Tree(ctx context.Context, oid, p string) (es []Entry, truncated b
 // parseEntry reads "<mode> <type> <id> <size>\t<name>".
 func parseEntry(rec string) (Entry, bool) {
 	meta, name, ok := strings.Cut(rec, "\t")
-	f := strings.Fields(meta)
-	if !ok || len(f) != 4 || name == "" {
+	if !ok || name == "" {
 		return Entry{}, false
 	}
+	fields := strings.Fields(meta)
+	if len(fields) != 4 {
+		return Entry{}, false
+	}
+	var f [4]string // a copy, so that a guard lost in a change makes a wrong entry, not a crash
+	copy(f[:], fields)
 	e := Entry{Mode: f[0], Type: f[1], ID: f[2], Name: name, Size: -1}
 	if f[3] != "-" {
 		n, err := strconv.ParseInt(f[3], 10, 64)
@@ -363,8 +380,11 @@ func (r *Repo) Show(ctx context.Context, oid string) (Detail, error) {
 	if err != nil {
 		return Detail{}, err
 	}
-	f := strings.SplitN(string(out), "\x1f", 5)
-	if len(f) != 5 || f[0] != oid {
+	// A short answer leaves the last fields empty, which the id and the time
+	// below refuse.
+	var f [5]string
+	copy(f[:], strings.SplitN(string(out), "\x1f", 5))
+	if f[0] != oid {
 		return Detail{}, ErrNotFound
 	}
 	at, err := strconv.ParseInt(f[3], 10, 64)

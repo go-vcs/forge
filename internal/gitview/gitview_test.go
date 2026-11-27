@@ -21,12 +21,15 @@ import (
 
 // The test binary stands in for git in the tests of the limits: the repository
 // is given it as its Git program and it misbehaves on demand.
+// The scenario is the repository's Dir.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 6 && os.Args[1] == "--no-pager" {
-		switch os.Args[5] + " " + os.Args[6] {
-		case "cat-file -t": // hangs
+		scen, cmd, oid := strings.TrimPrefix(os.Args[2], "--git-dir="), os.Args[5], os.Args[len(os.Args)-1]
+		good := oid + "\x1f\x1fa\x1f1\x1fmsg\n" // what `show` prints for a commit with no parent
+		switch {
+		case scen == "hang":
 			time.Sleep(time.Hour)
-		case "cat-file blob": // never stops
+		case scen == "endless" && cmd == "cat-file": // never stops
 			w := bufio.NewWriter(os.Stdout)
 			chunk := []byte(strings.Repeat("x", 4096))
 			for {
@@ -34,15 +37,45 @@ func TestMain(m *testing.M) {
 					os.Exit(0)
 				}
 			}
+		case scen == "tree-garbage" && cmd == "ls-tree":
+			os.Stdout.WriteString("garbage\x00")
+			os.Exit(0)
+		case scen == "size-garbage" && cmd == "cat-file":
+			os.Stdout.WriteString("abc\n")
+			os.Exit(0)
+		case scen == "size-negative" && cmd == "cat-file":
+			os.Stdout.WriteString("-5\n")
+			os.Exit(0)
+		case scen == "show-short" && cmd == "show":
+			os.Stdout.WriteString("x")
+			os.Exit(0)
+		case scen == "show-wrong-oid" && cmd == "show":
+			os.Stdout.WriteString(strings.Repeat("b", 40) + "\x1f\x1fa\x1f1\x1fmsg\n")
+			os.Exit(0)
+		case scen == "show-bad-time" && cmd == "show":
+			os.Stdout.WriteString(oid + "\x1f\x1fa\x1fxx\x1fmsg\n")
+			os.Exit(0)
+		case strings.HasPrefix(scen, "show-") && cmd == "diff-tree" && scen != "show-diff-fails" && scen != "show-diff-hangs":
+			os.Exit(0) // an empty diff: the failure under test is in `show`
+		case scen == "show-diff-fails" && cmd == "show":
+			os.Stdout.WriteString(good)
+			os.Exit(0)
+		case scen == "show-diff-hangs" && cmd == "show":
+			os.Stdout.WriteString(good)
+			os.Exit(0)
+		case scen == "show-diff-hangs" && cmd == "diff-tree":
+			time.Sleep(time.Hour)
 		}
 		os.Exit(2)
 	}
 	os.Exit(m.Run())
 }
 
-func fake(timeout time.Duration) *gitview.Repo {
-	return &gitview.Repo{Dir: "unused", Git: os.Args[0], Timeout: timeout}
+func fake(scenario string, timeout time.Duration) *gitview.Repo {
+	return &gitview.Repo{Dir: scenario, Git: os.Args[0], Timeout: timeout}
 }
+
+var anOID = strings.Repeat("a", 40)
 
 func realRepo(t *testing.T) (*gitview.Repo, string) {
 	t.Helper()
@@ -255,7 +288,7 @@ func TestIsText(t *testing.T) {
 
 func TestOutputIsCutAndTheProcessKilled(t *testing.T) {
 	start := time.Now()
-	b, cut, err := fake(0).Blob(t.Context(), strings.Repeat("a", 40), "f", 1000)
+	b, cut, err := fake("endless", 0).Blob(t.Context(), anOID, "f", 1000)
 	if err != nil || !cut || len(b) != 1000 {
 		t.Fatalf("len %d, cut %v, err %v", len(b), cut, err)
 	}
@@ -266,18 +299,96 @@ func TestOutputIsCutAndTheProcessKilled(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	start := time.Now()
-	_, err := fake(200*time.Millisecond).Kind(t.Context(), strings.Repeat("a", 40), "f")
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("err = %v", err)
+	r := fake("hang", 200*time.Millisecond)
+	ctx := t.Context()
+	// every operation reports the deadline as such, not as "not found"
+	calls := map[string]func() error{
+		"Resolve":  func() error { _, err := r.Resolve(ctx, "main"); return err },
+		"Kind":     func() error { _, err := r.Kind(ctx, anOID, "f"); return err },
+		"Tree":     func() error { _, _, err := r.Tree(ctx, anOID, ""); return err },
+		"BlobSize": func() error { _, err := r.BlobSize(ctx, anOID, "f"); return err },
+		"Blob":     func() error { _, _, err := r.Blob(ctx, anOID, "f", 10); return err },
+		"Log":      func() error { _, _, err := r.Log(ctx, anOID, 0); return err },
+		"Show":     func() error { _, err := r.Show(ctx, anOID); return err },
+		"Show diff": func() error {
+			_, err := fake("show-diff-hangs", 200*time.Millisecond).Show(ctx, anOID)
+			return err
+		},
 	}
-	if time.Since(start) > 5*time.Second {
+	for name, call := range calls {
+		if err := call(); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	if time.Since(start) > 10*time.Second {
 		t.Errorf("took %v", time.Since(start))
 	}
 	// the caller's own cancellation counts too
-	ctx, cancel := context.WithCancel(t.Context())
+	cctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := fake(0).Kind(ctx, strings.Repeat("a", 40), "f"); err == nil {
+	if _, err := fake("hang", 0).Kind(cctx, anOID, "f"); err == nil {
 		t.Error("a cancelled context did not stop the command")
+	}
+}
+
+// What git prints is parsed strictly: a line that is not what it should be is an
+// error, never a half-filled page.
+func TestGitOutputIsChecked(t *testing.T) {
+	ctx := t.Context()
+	if _, _, err := fake("tree-garbage", 0).Tree(ctx, anOID, ""); err == nil || errors.Is(err, gitview.ErrNotFound) {
+		t.Errorf("Tree of garbage: %v", err)
+	}
+	for _, s := range []string{"size-garbage", "size-negative"} {
+		if n, err := fake(s, 0).BlobSize(ctx, anOID, "f"); !errors.Is(err, gitview.ErrNotFound) {
+			t.Errorf("BlobSize %s: %d, %v", s, n, err)
+		}
+	}
+	for _, s := range []string{"show-short", "show-wrong-oid", "show-bad-time", "show-diff-fails"} {
+		if d, err := fake(s, 0).Show(ctx, anOID); err == nil {
+			t.Errorf("Show %s: %+v", s, d)
+		}
+	}
+}
+
+// Only a full commit id reaches the commands that take one.
+func TestOnlyIDsReachCommands(t *testing.T) {
+	r, _ := realRepo(t)
+	ctx := t.Context()
+	for _, bad := range []string{"main", "HEAD", "-x", "--help", "", anOID[:39], strings.ToUpper(anOID)} {
+		calls := map[string]func() error{
+			"Kind":     func() error { _, err := r.Kind(ctx, bad, ""); return err },
+			"Tree":     func() error { _, _, err := r.Tree(ctx, bad, ""); return err },
+			"BlobSize": func() error { _, err := r.BlobSize(ctx, bad, "f.txt"); return err },
+			"Blob":     func() error { _, _, err := r.Blob(ctx, bad, "f.txt", 10); return err },
+			"Log":      func() error { _, _, err := r.Log(ctx, bad, 0); return err },
+			"Show":     func() error { _, err := r.Show(ctx, bad); return err },
+		}
+		for name, call := range calls {
+			if err := call(); !errors.Is(err, gitview.ErrBadPath) {
+				t.Errorf("%s(%q): %v", name, bad, err)
+			}
+		}
+	}
+}
+
+// A submodule is neither a tree nor a blob: it is listed, and it has no page.
+func TestSubmoduleEntry(t *testing.T) {
+	r, work := realRepo(t)
+	head := gittest.Git(t, work, "rev-parse", "HEAD")
+	gittest.Git(t, work, "update-index", "--add", "--cacheinfo", "160000,"+head+",sub")
+	gittest.Git(t, work, "commit", "-q", "-m", "submodule")
+	gittest.Git(t, work, "push", "-q", r.Dir, "main")
+	ctx := t.Context()
+	oid, err := r.Resolve(ctx, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Kind(ctx, oid, "sub"); !errors.Is(err, gitview.ErrNotFound) {
+		t.Errorf("Kind of a submodule: %v", err)
+	}
+	es, _, err := r.Tree(ctx, oid, "")
+	if err != nil || len(es) != 2 || es[1].Name != "sub" || es[1].Type != "commit" || es[1].Size != -1 {
+		t.Errorf("Tree: %+v %v", es, err)
 	}
 }
 

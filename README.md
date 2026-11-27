@@ -9,9 +9,14 @@
 
 Light, secure Git forge: hosting, web UI, admin gRPC, Actions runners via GARM.
 
-Status: milestone 2. The admin gRPC API and its CLI, and read-only `git clone`
-and `git fetch` over SSH and smart HTTP (protocol v2), are implemented; push, sign-in and the
-web UI are still design only. Read [docs/design.md](docs/design.md)
+Status: milestone 3. The admin gRPC API and its CLI, read-only `git clone`
+and `git fetch` over SSH and smart HTTP (protocol v2), OIDC sign-in through the
+go-authn bridge, and a read-only web UI are implemented. With `--web-listen`
+and `--repos-root` the web listener serves, for each repository the viewer may
+read (owner, or exported with `git-daemon-export-ok`; anything else is a 404),
+the tree, blob, raw file, commit log and commit diff pages; every git command
+runs with a deadline, a bounded output and a bounded concurrency. Push and
+pull requests are still design only. Read [docs/design.md](docs/design.md)
 for the goals, the security invariants, how the work is split between
 `go-vcs/forge`, `go-vcs/gitproto` and `go-vcs/actions`, and the milestones.
 
