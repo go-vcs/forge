@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-authn/rp/rptest"
 	"github.com/go-vcs/forge/internal/adminsrv"
-	"github.com/go-vcs/forge/internal/idptest"
 	"github.com/go-vcs/forge/internal/secretbox"
 	"github.com/go-vcs/forge/internal/store"
 	"github.com/go-vcs/forge/internal/web"
@@ -42,7 +42,7 @@ func (c *clock) Add(d time.Duration) {
 type env struct {
 	t    *testing.T
 	st   *store.Store
-	idp  *idptest.IdP
+	idp  *rptest.IdP
 	srv  *web.Server
 	ts   *httptest.Server
 	clk  *clock
@@ -98,7 +98,9 @@ func newEnv(t *testing.T, opts ...func(*web.Server)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.idp = idptest.New(t)
+	e.idp = rptest.New(t)
+	e.idp.ClientID, e.idp.Secret = "forge", "s3cret"
+	e.idp.Sub, e.idp.Username = "alice-sub", "alice"
 	e.srv = &web.Server{Store: e.st, Seal: e.box, HTTP: e.idp.Client(), Now: e.clk.Now,
 		Log: slog.New(slog.NewTextHandler(e.logs, nil))}
 	for _, o := range opts {
