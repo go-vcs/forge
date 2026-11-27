@@ -6,6 +6,7 @@ package store_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/go-vcs/forge/internal/store"
@@ -79,5 +80,28 @@ func TestLoginForIdentity(t *testing.T) {
 	n, err := s.ListUsers(ctx)
 	if err != nil || len(n) != 1 {
 		t.Fatalf("accounts after sign-in attempts: %v %v", n, err)
+	}
+}
+
+func TestOIDCStatementsFail(t *testing.T) {
+	ctx := t.Context()
+	s, _ := withKey(t, `DROP TABLE oidc_client`)
+	if _, err := s.GetOIDCClient(ctx); err == nil || errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("Get on a missing table = %v", err)
+	}
+	if err := s.SetOIDCClient(ctx, store.OIDCClient{Issuer: "https://i", ClientID: "a", RedirectURI: "https://f.example/cb"}); err == nil {
+		t.Fatal("Set on a missing table succeeded")
+	}
+	s, _ = withKey(t, `DROP TABLE identities`)
+	if _, err := s.LoginForIdentity(ctx, "https://i", "s"); err == nil || errors.Is(err, store.ErrNotAuthorized) {
+		t.Fatalf("LoginForIdentity on a missing table = %v: a storage failure must not read as a refusal", err)
+	}
+}
+
+func TestOIDCRedirectURILength(t *testing.T) {
+	s := open(t)
+	long := "https://f.example/" + strings.Repeat("a", store.MaxRedirectURILen)
+	if err := s.SetOIDCClient(t.Context(), store.OIDCClient{Issuer: "https://i", ClientID: "a", RedirectURI: long}); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("long redirect URI = %v", err)
 	}
 }
