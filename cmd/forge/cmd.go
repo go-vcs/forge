@@ -107,7 +107,7 @@ arguments, the environment or a URL.`,
 	f.StringVar(&c.sshHostKey, "ssh-host-key", "", "SSH host key `file`, an ed25519 OpenSSH private key, mode 0600, never generated (default: systemd credential ssh_host_key)")
 	f.StringVar(&c.reposRoot, "repos-root", "", "`directory` holding <owner>/<name>.git bare repositories (required with --ssh-listen)")
 	f.StringVar(&c.httpListen, "http-listen", "", "serve anonymous git clone and fetch of public repositories over smart HTTP (TLS 1.3, protocol v2) on this `address` (off when empty)")
-	f.StringVar(&c.webListen, "web-listen", "", "serve the web UI and OIDC sign-in (TLS 1.3) on this `address` (off when empty); the sign-in client is registered with `forgectl oidc set`")
+	f.StringVar(&c.webListen, "web-listen", "", "serve the web UI and OIDC sign-in (TLS 1.3) on this `address` (off when empty); the sign-in client is registered with `forgectl oidc set`; with --repos-root it also shows the repositories, read-only")
 	f.StringVar(&c.gitBin, "git", "", "git `executable` (default: git on PATH)")
 	f.DurationVar(&c.gitTimeout, "git-timeout", gitrepo.DefaultRequestDuration, "longest a git session may last")
 	f.IntVar(&c.gitSessions, "git-sessions", gitrepo.DefaultTotalSessions, "most git sessions at once, in total")
@@ -220,7 +220,14 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 
 	var webSrv *http.Server
 	if c.webListen != "" {
-		webSrv = newWebServer(tlsConfig(cert), st, seal, log)
+		var repos *gitrepo.Service
+		if c.reposRoot != "" { // without it the listener serves sign-in only
+			repos = &gitrepo.Service{Root: c.reposRoot, Git: c.gitBin}
+			if err := repos.Validate(); err != nil {
+				return err
+			}
+		}
+		webSrv = newWebServer(tlsConfig(cert), st, seal, repos, c, log)
 	}
 
 	adminLn, err := net.Listen("tcp", c.adminListen)
@@ -329,8 +336,9 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 
 // newWebServer builds the web listener: TLS 1.3 only (the session cookie is
 // Secure), HTTP/1.1, every timeout set.
-func newWebServer(tc *tls.Config, st *store.Store, seal *secretbox.Box, log *slog.Logger) *http.Server {
-	h := (&web.Server{Store: st, Seal: seal, Log: log}).Handler()
+func newWebServer(tc *tls.Config, st *store.Store, seal *secretbox.Box, repos *gitrepo.Service, c serveConfig, log *slog.Logger) *http.Server {
+	h := (&web.Server{Store: st, Seal: seal, Log: log, Repos: repos,
+		Limiter: &gitrepo.Limiter{Total: c.gitSessions, PerKey: c.gitSessionsPerAccount}}).Handler()
 	tc = tc.Clone()
 	tc.NextProtos = []string{"http/1.1"}
 	return &http.Server{

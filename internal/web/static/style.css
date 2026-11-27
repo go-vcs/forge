@@ -8,3 +8,6 @@ pre { overflow: auto; background: #f6f8fa; padding: .5rem; }
 .add { background: #e6ffec; }
 .del { background: #ffebe9; }
 .meta { color: #57606a; }
+pre.diff span { display: block; min-height: 1.5em; white-space: pre; }
+pre.diff .hunk { color: #0550ae; background: #ddf4ff; }
+pre.diff .meta { color: #57606a; font-weight: 600; }

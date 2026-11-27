@@ -1,0 +1,4 @@
+{{template "top" .}}
+<p><a href="{{.RawHref}}">Raw</a></p>
+{{if .Notice}}<p class="meta">{{.Notice}}</p>{{else}}<pre>{{.Text}}</pre>{{end}}
+{{template "bottom" .}}

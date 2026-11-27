@@ -126,6 +126,26 @@ func TestOpenRule(t *testing.T) {
 	}
 }
 
+// The web pages ask Dir; it must give the rule of Open, not a copy of it.
+func TestDirRule(t *testing.T) {
+	root := t.TempDir()
+	gittest.NewRepo(t, root, "alice", "private", false)
+	gittest.NewRepo(t, root, "alice", "open", true)
+	s := &Service{Root: root}
+	for _, c := range []struct {
+		repo, login string
+		ok          bool
+	}{{"private", "alice", true}, {"private", "bob", false}, {"private", "", false}, {"open", "bob", true}, {"open", "", true}, {"nothing", "alice", false}} {
+		dir, err := s.Dir(Name{"alice", c.repo}, c.login)
+		if c.ok && (err != nil || dir != filepath.Join(root, "alice", c.repo+".git")) {
+			t.Errorf("%s as %q: %q, %v", c.repo, c.login, dir, err)
+		}
+		if !c.ok && (!errors.Is(err, ErrNotFound) || dir != "") {
+			t.Errorf("%s as %q: %q, %v; want ErrNotFound", c.repo, c.login, dir, err)
+		}
+	}
+}
+
 func TestOpenRefusesWhatIsNotARepository(t *testing.T) {
 	root := t.TempDir()
 	gittest.NewRepo(t, root, "alice", "ok", true)

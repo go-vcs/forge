@@ -1,0 +1,8 @@
+{{template "top" .}}
+{{if .Empty}}<p>This repository is empty.</p>{{else}}
+<table>
+{{range .Entries}}<tr><td>{{if .Href}}<a href="{{.Href}}">{{.Name}}{{if .Dir}}/{{end}}</a>{{else}}{{.Name}}{{end}}</td><td class="meta">{{if ge .Size 0}}{{.Size}}{{end}}</td></tr>
+{{end}}</table>
+{{if .Truncated}}<p class="meta">The listing is cut: this directory holds more entries than a page shows.</p>{{end}}
+{{end}}
+{{template "bottom" .}}

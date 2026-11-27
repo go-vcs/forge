@@ -85,7 +85,7 @@ func (e *env) raw(stmts string) {
 	}
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...func(*web.Server)) *env {
 	t.Helper()
 	e := &env{t: t, clk: &clock{t: epoch}, logs: &logBuf{}, path: filepath.Join(t.TempDir(), "forge.db")}
 	var err error
@@ -101,6 +101,9 @@ func newEnv(t *testing.T) *env {
 	e.idp = idptest.New(t)
 	e.srv = &web.Server{Store: e.st, Seal: e.box, HTTP: e.idp.Client(), Now: e.clk.Now,
 		Log: slog.New(slog.NewTextHandler(e.logs, nil))}
+	for _, o := range opts {
+		o(e.srv)
+	}
 	var h http.Handler
 	e.ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) }))
 	t.Cleanup(e.ts.Close)

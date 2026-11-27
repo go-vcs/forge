@@ -107,19 +107,29 @@ func isFile(p string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
+// Dir returns the directory of the bare repository n if login may read it, with
+// the rule of Open (the web pages and the protocols read the same repositories).
+func (s *Service) Dir(n Name, login string) (string, error) {
+	ownerDir := filepath.Join(s.Root, n.Owner)
+	dir := filepath.Join(ownerDir, n.Repo+".git")
+	if !isDir(ownerDir) || !isDir(dir) || !isFile(filepath.Join(dir, "HEAD")) {
+		return "", ErrNotFound
+	}
+	if login == "" || login != n.Owner {
+		if !isFile(filepath.Join(dir, PublicMarker)) {
+			return "", ErrNotFound
+		}
+	}
+	return dir, nil
+}
+
 // Open returns the protocol server for n, for the account login ("" for an
 // anonymous reader). A missing repository, one that is not a plain directory
 // inside Root, and one login may not read all return ErrNotFound.
 func (s *Service) Open(n Name, login string) (*gitproto.Server, error) {
-	ownerDir := filepath.Join(s.Root, n.Owner)
-	dir := filepath.Join(ownerDir, n.Repo+".git")
-	if !isDir(ownerDir) || !isDir(dir) || !isFile(filepath.Join(dir, "HEAD")) {
-		return nil, ErrNotFound
-	}
-	if login == "" || login != n.Owner {
-		if !isFile(filepath.Join(dir, PublicMarker)) {
-			return nil, ErrNotFound
-		}
+	dir, err := s.Dir(n, login)
+	if err != nil {
+		return nil, err
 	}
 	return &gitproto.Server{
 		Repo:   &gitproto.GitRepo{Dir: dir, Git: s.Git, PackThreads: s.PackThreads},
