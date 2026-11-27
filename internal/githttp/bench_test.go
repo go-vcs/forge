@@ -7,20 +7,23 @@ package githttp
 import (
 	"io"
 	"log/slog"
-	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/go-vcs/forge/internal/gitrepo"
 	"github.com/go-vcs/forge/internal/gittest"
 )
 
 // BenchmarkClone clones the same repository with the real git client through
-// this handler and through git http-backend (CGI), both over plain HTTP.
+// this handler and through git http-backend (CGI), both over plain HTTP. The
+// two are interleaved, one clone each per iteration with the order
+// alternating, and the result carries both times and their ratio.
 func BenchmarkClone(b *testing.B) {
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -47,16 +50,37 @@ func BenchmarkClone(b *testing.B) {
 		Env: []string{"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"},
 	})
 	defer backend.Close()
-	for _, c := range []struct {
-		name string
-		h    http.Handler
-		url  string
-	}{{"forge", nil, forge.URL}, {"git-http-backend", nil, backend.URL}} {
-		b.Run(c.name, func(b *testing.B) {
-			dir := b.TempDir()
-			for i := 0; i < b.N; i++ {
-				gittest.Git(b, dir, "-c", "protocol.version=2", "clone", "-q", c.url+"/alice/pub.git", filepath.Join(dir, "c", string(rune('a'+i%26)), "x"+string(rune('a'+i/26%26))))
-			}
-		})
+
+	dir := b.TempDir()
+	clone := func(url, tag string, i int) time.Duration {
+		dst := filepath.Join(dir, tag, string(rune('a'+i%26)), "x"+string(rune('a'+i/26%26)))
+		t0 := time.Now()
+		gittest.Git(b, dir, "-c", "protocol.version=2", "clone", "-q", url+"/alice/pub.git", dst)
+		return time.Since(t0)
 	}
+	var forgeT, gitT time.Duration
+	var forgeBytes, forgeMallocs uint64
+	var m0, m1 runtime.MemStats
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for k := 0; k < 2; k++ {
+			if (i+k)%2 == 0 {
+				runtime.ReadMemStats(&m0)
+				forgeT += clone(forge.URL, "forge", i)
+				runtime.ReadMemStats(&m1)
+				forgeBytes += m1.TotalAlloc - m0.TotalAlloc
+				forgeMallocs += m1.Mallocs - m0.Mallocs
+			} else {
+				gitT += clone(backend.URL, "backend", i)
+			}
+		}
+	}
+	n := float64(b.N)
+	b.ReportMetric(float64(forgeT)/n, "forge-ns/op")
+	b.ReportMetric(float64(gitT)/n, "git-http-backend-ns/op")
+	b.ReportMetric(float64(forgeT)/float64(gitT), "forge/git")
+	// Everything the process allocated during a forge clone: the handler plus
+	// the Go side of the harness (starting and reaping the git client).
+	b.ReportMetric(float64(forgeBytes)/n, "forge-B/op")
+	b.ReportMetric(float64(forgeMallocs)/n, "forge-allocs/op")
 }
