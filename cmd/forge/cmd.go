@@ -61,6 +61,7 @@ func RootCmd() *cobra.Command {
 
 type serveConfig struct {
 	db, adminListen, tlsCert, tlsKey, enrolSocket, rpID, mdsBlob string
+	secretsKey                                                   string
 	aaguids                                                      []string
 
 	// git transports (milestone 2): off unless --ssh-listen is given
@@ -97,6 +98,7 @@ arguments, the environment or a URL.`,
 	f.StringVar(&c.rpID, "rp-id", "", "WebAuthn relying party `id` the keys are bound to (required)")
 	f.StringArrayVar(&c.aaguids, "aaguid", nil, "allowed authenticator model `AAGUID` (repeatable, at least one)")
 	f.StringVar(&c.mdsBlob, "mds-blob", "", "FIDO MDS3 blob `file`, verified at start (required)")
+	f.StringVar(&c.secretsKey, "secrets-key", "", "`file` holding the 32-byte key that encrypts stored secrets, mode 0600 (default: systemd credential secrets.key; without one no secret can be stored)")
 	f.StringVar(&c.sshListen, "ssh-listen", "", "serve git clone and fetch over SSH on this `address` (off when empty)")
 	f.StringVar(&c.sshHostKey, "ssh-host-key", "", "SSH host key `file`, an ed25519 OpenSSH private key, mode 0600, never generated (default: systemd credential ssh_host_key)")
 	f.StringVar(&c.reposRoot, "repos-root", "", "`directory` holding <owner>/<name>.git bare repositories (required with --ssh-listen)")
@@ -177,6 +179,10 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 	}
 	defer st.Close()
 
+	seal, err := loadSealer(c.secretsKey)
+	if err != nil {
+		return err
+	}
 	log := slog.New(slog.NewTextHandler(&syncWriter{w: stderr}, nil))
 	nonces := adminauth.NewNonces(time.Now, time.Minute, 4096)
 	admin := &adminsrv.Admin{
@@ -185,6 +191,7 @@ func serve(ctx context.Context, stdout, stderr io.Writer, c serveConfig) error {
 		Nonces:   nonces,
 		Sessions: adminauth.NewSessions(time.Now, 10*time.Minute, 8, 256),
 		Log:      log,
+		Seal:     seal,
 	}
 	adminSrv, err := adminsrv.NewAdminServer(tlsConfig(cert), admin)
 	if err != nil {

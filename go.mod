@@ -5,12 +5,14 @@ go 1.27.4
 require (
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/go-authn/fido v0.16.0
+	github.com/go-authn/harden v0.3.0
 	github.com/go-authn/webauthn v0.5.0
 	github.com/go-gnulinux/fido v0.6.0
 	github.com/go-macos/fido v0.6.0
 	github.com/go-vcs/gitproto v0.0.0-20261126152140-49528442e710
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.58.0
+	golang.org/x/term v0.48.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.63.0

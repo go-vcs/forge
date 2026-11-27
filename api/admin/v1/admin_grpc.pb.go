@@ -41,6 +41,8 @@ const (
 	AdminService_RemoveSSHKey_FullMethodName          = "/govcs.forge.admin.v1.AdminService/RemoveSSHKey"
 	AdminService_GetPolicy_FullMethodName             = "/govcs.forge.admin.v1.AdminService/GetPolicy"
 	AdminService_SetPolicy_FullMethodName             = "/govcs.forge.admin.v1.AdminService/SetPolicy"
+	AdminService_GetOIDCClient_FullMethodName         = "/govcs.forge.admin.v1.AdminService/GetOIDCClient"
+	AdminService_SetOIDCClient_FullMethodName         = "/govcs.forge.admin.v1.AdminService/SetOIDCClient"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -66,6 +68,8 @@ type AdminServiceClient interface {
 	RemoveSSHKey(ctx context.Context, in *RemoveSSHKeyRequest, opts ...grpc.CallOption) (*RemoveSSHKeyResponse, error)
 	GetPolicy(ctx context.Context, in *GetPolicyRequest, opts ...grpc.CallOption) (*GetPolicyResponse, error)
 	SetPolicy(ctx context.Context, in *SetPolicyRequest, opts ...grpc.CallOption) (*SetPolicyResponse, error)
+	GetOIDCClient(ctx context.Context, in *GetOIDCClientRequest, opts ...grpc.CallOption) (*GetOIDCClientResponse, error)
+	SetOIDCClient(ctx context.Context, in *SetOIDCClientRequest, opts ...grpc.CallOption) (*SetOIDCClientResponse, error)
 }
 
 type adminServiceClient struct {
@@ -226,6 +230,26 @@ func (c *adminServiceClient) SetPolicy(ctx context.Context, in *SetPolicyRequest
 	return out, nil
 }
 
+func (c *adminServiceClient) GetOIDCClient(ctx context.Context, in *GetOIDCClientRequest, opts ...grpc.CallOption) (*GetOIDCClientResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOIDCClientResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetOIDCClient_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetOIDCClient(ctx context.Context, in *SetOIDCClientRequest, opts ...grpc.CallOption) (*SetOIDCClientResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetOIDCClientResponse)
+	err := c.cc.Invoke(ctx, AdminService_SetOIDCClient_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -249,6 +273,8 @@ type AdminServiceServer interface {
 	RemoveSSHKey(context.Context, *RemoveSSHKeyRequest) (*RemoveSSHKeyResponse, error)
 	GetPolicy(context.Context, *GetPolicyRequest) (*GetPolicyResponse, error)
 	SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error)
+	GetOIDCClient(context.Context, *GetOIDCClientRequest) (*GetOIDCClientResponse, error)
+	SetOIDCClient(context.Context, *SetOIDCClientRequest) (*SetOIDCClientResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -303,6 +329,12 @@ func (UnimplementedAdminServiceServer) GetPolicy(context.Context, *GetPolicyRequ
 }
 func (UnimplementedAdminServiceServer) SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetPolicy not implemented")
+}
+func (UnimplementedAdminServiceServer) GetOIDCClient(context.Context, *GetOIDCClientRequest) (*GetOIDCClientResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetOIDCClient not implemented")
+}
+func (UnimplementedAdminServiceServer) SetOIDCClient(context.Context, *SetOIDCClientRequest) (*SetOIDCClientResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetOIDCClient not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -595,6 +627,42 @@ func _AdminService_SetPolicy_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_GetOIDCClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOIDCClientRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetOIDCClient(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetOIDCClient_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetOIDCClient(ctx, req.(*GetOIDCClientRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetOIDCClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetOIDCClientRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetOIDCClient(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetOIDCClient_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetOIDCClient(ctx, req.(*SetOIDCClientRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -661,6 +729,14 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetPolicy",
 			Handler:    _AdminService_SetPolicy_Handler,
+		},
+		{
+			MethodName: "GetOIDCClient",
+			Handler:    _AdminService_GetOIDCClient_Handler,
+		},
+		{
+			MethodName: "SetOIDCClient",
+			Handler:    _AdminService_SetOIDCClient_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -4,7 +4,15 @@
 
 package adminsrv
 
-import "crypto/tls"
+import (
+	"context"
+	"crypto/tls"
+)
+
+// Finish and SealStatus expose the unexported helpers to the tests.
+func (a *Admin) Finish(ctx context.Context, err error) { a.finish(ctx, nil, err) }
+
+func SealStatus(err error) error { return sealStatus(err) }
 
 // UseExporter swaps the keying-material export Exporter calls and returns the
 // restore.

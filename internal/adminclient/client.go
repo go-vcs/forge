@@ -190,6 +190,18 @@ func (c *Client) RemoveSSHKey(ctx context.Context, fingerprint string) error {
 	return err
 }
 
+// SetOIDCClient replaces the OIDC registration. The secret goes in the signed
+// request body only.
+func (c *Client) SetOIDCClient(ctx context.Context, issuer, clientID, redirectURI string, secret []byte) error {
+	env, err := c.Sign(ctx, adminv1.AdminService_SetOIDCClient_FullMethodName, &adminv1.SetOIDCClientParams{
+		Issuer: issuer, ClientId: clientID, RedirectUri: redirectURI, ClientSecret: secret})
+	if err != nil {
+		return err
+	}
+	_, err = c.Admin.SetOIDCClient(ctx, &adminv1.SetOIDCClientRequest{Envelope: env})
+	return err
+}
+
 // SetPolicy replaces the forge-wide policy.
 func (c *Client) SetPolicy(ctx context.Context, p *adminv1.Policy) error {
 	env, err := c.Sign(ctx, adminv1.AdminService_SetPolicy_FullMethodName, &adminv1.SetPolicyParams{Policy: p})
